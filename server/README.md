@@ -41,3 +41,5 @@ Minimal Next.js 14 backend for a WhatsApp + voice stock manager for Rwanda.
 
 ## Render health ping
 The repository-root `render.yaml` defines a Render Cron Job that calls the health URL every five minutes. Set its `HEALTH_URL` environment variable in Render to your deployed service URL, for example `https://your-service.onrender.com/api/health`. The cron job fails visibly in its logs if the request fails.
+
+The same Blueprint defines the web service with `rootDir: server`, `buildCommand: npm ci && npm run build`, and `startCommand: npm start`. If the web service was created manually rather than from this Blueprint, set those commands in Render's service settings and redeploy; the `next build` step must run during build, before `next start`.

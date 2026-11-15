@@ -1,9 +1,16 @@
 services:
+  - type: web
+    name: stock-ai-backend
+    runtime: node
+    rootDir: server
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+
   - type: cron
     name: stock-ai-health-ping
     runtime: node
     rootDir: server
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: node scripts/healthcheck.mjs
     schedule: "*/5 * * * *"
     envVars:
