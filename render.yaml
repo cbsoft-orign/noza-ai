@@ -1,0 +1,11 @@
+services:
+  - type: cron
+    name: stock-ai-health-ping
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node scripts/healthcheck.mjs
+    schedule: "*/5 * * * *"
+    envVars:
+      - key: HEALTH_URL
+        sync: false

@@ -25,6 +25,7 @@ Minimal Next.js 14 backend for a WhatsApp + voice stock manager for Rwanda.
    npm run dev
 
 ## Key endpoints
+- `GET /api/health`
 - `GET /api/whatsapp/webhook`
 - `POST /api/whatsapp/webhook`
 - `POST /api/voice/transcribe`
@@ -37,3 +38,6 @@ Minimal Next.js 14 backend for a WhatsApp + voice stock manager for Rwanda.
 ## Notes
 - This project keeps the implementation intentionally lean and uses an in-memory store when Supabase is not configured.
 - The free plan limit is enforced at 10 products and the messaging is kept short and Kinyarwanda-focused.
+
+## Render health ping
+The repository-root `render.yaml` defines a Render Cron Job that calls the health URL every five minutes. Set its `HEALTH_URL` environment variable in Render to your deployed service URL, for example `https://your-service.onrender.com/api/health`. The cron job fails visibly in its logs if the request fails.
