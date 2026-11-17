@@ -1,0 +1,182 @@
+STOCK AI (TILL) — FRONTEND BUILD PLAN (todo.txt)
+================================================================================
+Derived from /server (Next.js 14 backend: stock-ai-backend) — a WhatsApp,
+Voice, and Inventory/Sales Manager for Rwandan retail shops (dukas).
+
+
+1. DOMAIN & BACKEND CONTEXT SUMMARY
+--------------------------------------------------------------------------------
+- Core Users: Shop Owners (owner) and Workers (worker) managing daily retail
+  stock & sales in Rwanda (currency: RWF, phone format: 2507XXXXXXXX / 07XXXXXXXX).
+- Languages: Bilingual Kinyarwanda + English (Umuceri, Isukari, Icyayi,
+  Inyungu = Profit, Gurisha = Sell, Mfite = Have/Add, Ishyura = Pay).
+- Data Models (server/lib/store.ts & server/supabase/schema.sql):
+  * Shop: id, phone, name, village (Nyabugogo, Kicukiro, etc.), plan
+    (free | daily | monthly), credits, created_at
+  * User: id, shop_id, phone, role (owner | worker), name
+  * Product: id, shop_id, name, name_kv, buying_price, selling_price, quantity,
+    unit (piece | kg | loaf | slice | cup), parent_id, low_stock_threshold, village
+  * Sale: id, shop_id, product_id, quantity_sold, selling_price_at_time,
+    buying_price_at_time, profit, sold_by (owner | worker), created_at
+  * DailyReport: id, shop_id, date, total_sales, total_profit,
+    total_items_sold, stock_value
+  * Payment: id, shop_id, amount, type (200_daily | 5000_monthly),
+    status (pending | paid), momo_ref
+- Business Rules:
+  * Free Plan Limit: Capped at 10 products; exceeding prompts upgrade
+    (200 RWF/day or 5,000 RWF/month via MTN MoMo).
+  * Parent/Child & Fractional Units: Products like Bread Loaf (loaf) can link
+    to Bread Slice (slice, 0.1 unit delta) or cup (0.1 unit delta).
+  * WhatsApp & Voice Commands: Natural Kinyarwanda/English commands
+    (STOCK, Gurisha umuceri 2, Mfite umuceri 10, bulk 1x2, REPORT).
+
+
+2. FOUNDATION & DESIGN SYSTEM (client/)
+--------------------------------------------------------------------------------
+[ ] 2.1 App Shell & Routing
+    - Install react-router-dom and lucide-react in client.
+    - Update client/index.html title & meta tags (STOCK AI — Smart Stock & Sales Manager).
+    - Set up routes: /, /signin, /signup, /dashboard, /products, /pos,
+      /reports, /team, /billing, /settings.
+
+[ ] 2.2 Design System & Shared UI Primitives
+    - Configure Tailwind CSS tokens (high-contrast retail dashboard palette:
+      crisp slate surfaces, emerald profit indicators, amber low-stock warnings,
+      rose alerts).
+    - Build reusable components: AppLayout (desktop sidebar + mobile bottom nav),
+      StatCard, StatusBadge, Modal, Toast, EmptyState, CurrencyDisplay (1,500 RWF).
+
+[ ] 2.3 Bilingual & Context Providers
+    - Auth / Shop Context: Persist active shop & user session, expose current
+      shop, user (owner vs worker), plan, and credits.
+    - i18n Toggle (EN / RW): Switch labels between English and Kinyarwanda
+      (Inyungu, Stock isigaye, Gurisha, Ongeraho).
+    - API Client (src/lib/api.js): Centralized fetch('/api/...') wrapper with
+      error handling and loading states.
+
+
+3. PUBLIC LANDING, SIGN IN & SIGN UP
+--------------------------------------------------------------------------------
+[ ] 3.1 Landing / Entry Page (/)
+    - Value proposition for Rwandan shopkeepers: track stock, profit, and
+      worker sales via Web, WhatsApp, and Kinyarwanda Voice.
+    - Highlights: Instant Profit Tracking, Village Price Benchmarks, MoMo Plans
+      (Free, 200 RWF/day, 5,000 RWF/month).
+    - Primary CTAs: Sign In and Create Shop (Sign Up) + live backend health
+      indicator (GET /api/health).
+
+[ ] 3.2 Sign In Page (/signin)
+    - Phone number input with automatic Rwanda normalization (078... -> 25078...).
+    - Role lookup / selector (Owner vs Worker).
+    - OTP / WhatsApp verification step (or PIN) to enter the shop workspace.
+    - Quick Demo Login button for seeded shop Kigali Duka (250788000001).
+
+[ ] 3.3 Sign Up & Shop Onboarding Wizard (/signup)
+    - Step 1 — Owner & Shop Details: Owner name, phone (2507...), Shop name.
+    - Step 2 — Village / Market Selection: Choose village (Nyabugogo, Kicukiro, etc.).
+    - Step 3 — Starter Catalog Import: Fetch benchmark products from
+      GET /api/catalog?village=... so new shops start with pre-priced local
+      staples in one click (respecting 10-item free plan limit).
+    - Step 4 — WhatsApp TILL Activation: Display instructions and confirmation
+      for linking the shop phone to the WhatsApp webhook.
+
+
+4. AUTHENTICATED PAGES & CORE FEATURES
+--------------------------------------------------------------------------------
+[ ] 4.1 Dashboard Overview (/dashboard)
+    - KPI Cards: Total Revenue (totalSales), Net Profit (totalProfit / Inyungu),
+      Active Products count (with Free Plan X / 10 meter), Remaining Stock Value.
+    - Low-Stock Alerts Panel: Products at or below low_stock_threshold with
+      one-click restock action.
+    - Recent Sales Feed: Latest transactions showing product, quantity, profit,
+      timestamp, and sold_by (owner or worker).
+    - Quick Actions: Record Sale, Add Stock, Run Daily Report
+      (GET /api/cron/daily-report), and Upgrade Plan.
+
+[ ] 4.2 Inventory & Products (/products)
+    - Product Catalog View: Search by English or Kinyarwanda name (name / name_kv),
+      filter by unit (kg, piece, loaf, slice, cup) or low-stock status.
+    - Profit Margin Column: Display buying_price, selling_price, unit margin
+      (selling - buying), and current stock quantity.
+    - Parent/Child Linking: Visually group fractional items (e.g., Bread Slice
+      linked to Bread Loaf).
+    - Add / Edit Product Modal: Form with unit selector, threshold, buying/selling
+      price, and free-plan cap warning (>= 10 products triggers MoMo upgrade).
+    - AI Image-to-Products Scanner: Upload/trigger shelf photo scan via
+      POST /api/products/from-image, review detected items with estimated_price
+      and confidence, and import selected items into stock.
+    - Village Market Price Guide: Drawer/tab fetching GET /api/catalog?village=...
+      to compare shop prices against local village averages.
+
+[ ] 4.3 Quick POS, Voice & WhatsApp Simulator (/pos)
+    - Fast Point-of-Sale Grid: Tap product cards, choose quantity (including
+      fractional 0.1 for slices/cups or bulk ID x Qty like 1x2), select
+      sold_by (owner / worker), and complete sale with live profit preview.
+    - Voice Command Console: Record or paste audio URL -> POST /api/voice/transcribe
+      -> display Kinyarwanda transcript, parsed intent (SELL / ADD / STOCK),
+      stock update result, and voice-note synthesis status.
+    - WhatsApp Command Tester: Interactive chat simulator wired to
+      POST /api/whatsapp/webhook for testing text commands (STOCK,
+      Gurisha umuceri 2, Mfite umuceri 10, 1x2, REPORT).
+
+[ ] 4.4 Daily Reports & Analytics (/reports)
+    - Today's Summary Card: total_sales, total_profit, total_items_sold, stock_value.
+    - Daily Report History Table: Date-by-date log + 7-day profit accumulation banner.
+    - Owner vs. Worker Performance: Breakdown of sales and profit by role.
+    - WhatsApp Report Preview & Trigger: Preview the exact Kinyarwanda WhatsApp
+      summary message and trigger GET /api/cron/daily-report.
+
+[ ] 4.5 Team & Workers Management (/team) [Owner Only]
+    - List shop users (owner and worker roles) with phone numbers.
+    - Add/remove worker access and view per-worker sales attribution.
+
+[ ] 4.6 Billing & MTN MoMo Plans (/billing)
+    - Plan Comparison Cards:
+      * Free Plan: Up to 10 products, 20 starter credits.
+      * Daily Plan (200 RWF / day): Unlimited products, 25 credits (200_daily).
+      * Monthly Plan (5,000 RWF / month): Unlimited products, 200 credits (5000_monthly).
+    - MoMo Checkout Flow: Enter shop phone + MoMo reference (momo_ref), submit
+      to POST /api/payments, immediately update plan badge and credits.
+    - Payment History Table: Past transactions (amount, type, status, momo_ref).
+
+[ ] 4.7 Shop & Integration Settings (/settings)
+    - Edit shop name, village (Nyabugogo, Kicukiro), and phone number.
+    - View WhatsApp Cloud API / OpenAI Whisper / Google Cloud TTS / Supabase
+      connection readiness.
+    - Default language preference (Kinyarwanda / English).
+
+
+5. BACKEND API ALIGNMENT NOTES (/server/app/api/*)
+--------------------------------------------------------------------------------
+Already Available in /server:
+  - GET  /api/health
+  - GET  /api/dashboard
+  - GET  /api/catalog?village=...
+  - POST /api/products/from-image
+  - POST /api/voice/transcribe
+  - GET / POST /api/whatsapp/webhook
+  - POST /api/payments
+  - GET  /api/cron/daily-report
+
+Thin CRUD Endpoints to Add in /server/app/api/* for Full Persistence:
+  [ ] POST /api/auth/signin & POST /api/auth/signup
+  [ ] GET / PATCH /api/shop
+  [ ] GET / POST /api/products & PATCH / DELETE /api/products/[id]
+  [ ] GET / POST /api/sales
+  [ ] GET / POST /api/team
+
+
+6. RECOMMENDED EXECUTION ORDER
+--------------------------------------------------------------------------------
+1. Phase 1 — Foundation & Auth: Install react-router-dom & lucide-react, build
+   design tokens, layout shell, EN/RW toggle, Landing, Sign In, and Sign Up.
+2. Phase 2 — Backend CRUD Bridge: Add thin REST endpoints (/api/auth,
+   /api/products, /api/sales, /api/shop, /api/team) backed by server/lib/store.ts.
+3. Phase 3 — Dashboard & Inventory: Build /dashboard KPIs + alerts and /products
+   CRUD + Village Catalog + Image Scanner.
+4. Phase 4 — POS, Voice & WhatsApp Console: Build /pos checkout, bulk 1x2 input,
+   Kinyarwanda voice tester, and WhatsApp command simulator.
+5. Phase 5 — Reports, Team & Billing: Build /reports, /team, /billing (MoMo
+   checkout), and /settings.
+6. Phase 6 — Verification: Run npm run build, npm run lint, and end-to-end
+   testing across desktop and mobile viewports.

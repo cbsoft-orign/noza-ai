@@ -1,1 +1,760 @@
-this is frontend
+# PROJECT: NOZA Stock Management Dashboard — Pixel-Accurate Clone
+
+## 1. Main Objective
+
+Recreate the provided NOZA Stock Management Dashboard screenshot as closely as possible.
+
+The goal is to produce a pixel-accurate visual clone of the reference image, preserving its:
+- Layout and proportions.
+- Dark theme and turquoise color palette.
+- Sidebar navigation.
+- Dashboard cards.
+- Charts and graphs.
+- Typography and spacing.
+- Borders, shadows, gradients, and rounded corners.
+- Icons and visual hierarchy.
+
+Do not redesign, simplify, or introduce a different dashboard style. Treat the uploaded screenshot as the primary design specification.
+
+## 2. Technology Stack
+
+Use:
+- React.js
+- Vite
+- Tailwind CSS
+- Lucide React for icons
+- Recharts for charts
+- React Router for navigation where needed.
+
+Use reusable functional React components.
+
+## 3. Component Architecture
+
+Build the dashboard using the following independent components:
+
+```text
+src/
+├── assets/
+│   └── images/
+│
+├── components/
+│   ├── layout/
+│   │   ├── DashboardLayout.jsx
+│   │   ├── Sidebar.jsx
+│   │   ├── TopNavbar.jsx
+│   │   └── MainContent.jsx
+│   │
+│   ├── sidebar/
+│   │   ├── Logo.jsx
+│   │   ├── NavigationMenu.jsx
+│   │   ├── NavigationItem.jsx
+│   │   ├── VoiceAssistant.jsx
+│   │   └── UserProfile.jsx
+│   │
+│   ├── dashboard/
+│   │   ├── WelcomeHeader.jsx
+│   │   ├── StatisticsSection.jsx
+│   │   ├── StatCard.jsx
+│   │   ├── SalesOverview.jsx
+│   │   ├── StockStatus.jsx
+│   │   ├── RecentActivities.jsx
+│   │   ├── QuickActions.jsx
+│   │   └── QuickActionCard.jsx
+│   │
+│   ├── charts/
+│   │   ├── SalesLineChart.jsx
+│   │   └── StockDonutChart.jsx
+│   │
+│   └── common/
+│       ├── IconButton.jsx
+│       ├── SectionHeader.jsx
+│       └── NotificationButton.jsx
+│
+├── pages/
+│   └── Dashboard.jsx
+│
+├── data/
+│   ├── dashboardData.js
+│   └── navigationData.js
+│
+├── App.jsx
+└── main.jsx
+```
+
+Each component must have its own responsibility. Avoid placing the entire dashboard inside one JSX file.
+
+## 4. Dashboard Layout
+
+### A. Sidebar
+
+Create a fixed vertical sidebar on the left.
+
+Specifications:
+- Width: approximately 185px at 1080px screen width.
+- Full viewport height.
+- Almost black background.
+- Thin right border.
+- NOZA logo at the top.
+- Turquoise decorative gradient lines near the top and bottom.
+- Navigation items with icons and labels.
+
+Navigation menu:
+
+1. Dashboard
+2. Products
+3. Inventory
+4. Sales
+5. Reports
+6. Settings
+7. Help & Support
+
+The Dashboard item must be active by default.
+
+Active navigation styling:
+- Turquoise/green gradient background.
+- Rounded right corners.
+- White icon and text.
+
+At the bottom:
+- Voice Assistant button with audio waveform icon.
+- User profile section.
+- Circular profile icon.
+- Name: Zendaya.
+- Role: Admin.
+- Dropdown arrow.
+
+### B. Top Navbar
+
+Create a horizontal navbar above the main content.
+
+Include:
+- Search input with search icon.
+- Placeholder: "Search products, categories..."
+- Notification bell with small turquoise notification indicator.
+- Circular user avatar containing the letter Z.
+
+Style:
+- Dark background.
+- Bottom border.
+- Rounded search input.
+- Subtle hover effects.
+
+### C. Welcome Header
+
+Display:
+
+"Welcome back, Zendaya!"
+
+Highlight "Zendaya!" in turquoise.
+
+Subtitle:
+
+"Manage your stock, grow your business."
+
+Place this section immediately below the navbar.
+
+### D. Statistics Cards
+
+Create three cards in one horizontal row.
+
+Card 1:
+- Icon: Package / Cube.
+- Title: Total Products.
+- Value: 1,250.
+- Growth: +12%.
+
+Card 2:
+- Icon: Shopping Cart.
+- Title: Total Sales.
+- Value: RWF 3,580,000.
+- Growth: +8%.
+
+Card 3:
+- Icon: Users.
+- Title: Total Customers.
+- Value: 860.
+- Growth: +10%.
+
+Styling:
+- Dark charcoal background.
+- Thin subtle border.
+- Rounded corners.
+- Large turquoise icons.
+- White numerical values.
+- Small green growth indicators.
+- Consistent card heights and spacing.
+
+### E. Sales Overview
+
+Create a large chart card occupying approximately 60% of the dashboard's chart row.
+
+Header:
+- Bar chart icon in turquoise.
+- Title: Sales Overview.
+- Date filter dropdown: Last 30 Days.
+
+Chart:
+- Use Recharts LineChart or AreaChart.
+- Smooth turquoise line.
+- Turquoise gradient fill beneath the line.
+- Circular data points.
+- Dark chart background.
+- Horizontal grid lines.
+- Y-axis labels: 0, 1M, 2M, 3M, 4M.
+- X-axis labels: Oct 1, Oct 8, Oct 15, Oct 22, Oct 31.
+
+Use sample data that produces a similar rising and falling sales pattern to the reference image.
+
+### F. Stock Status
+
+Create a donut chart card beside Sales Overview.
+
+Header:
+- Pie chart icon.
+- Title: Stock Status.
+
+Donut chart:
+- 78% In Stock.
+- 14% Low Stock.
+- 8% Out of Stock.
+
+Center of chart:
+- Large percentage: 78%.
+- Subtitle: In Stock.
+
+Legend:
+- Turquoise: In Stock — 78%.
+- Grey: Low Stock — 14%.
+- White/light grey: Out of Stock — 8%.
+
+Use Recharts PieChart with innerRadius and outerRadius.
+
+### G. Recent Activities
+
+Create a card below the charts.
+
+Header:
+- Lightning icon in turquoise.
+- Title: Recent Activities.
+
+Display three activity items:
+
+1. Icon: Package.
+   Text: New sale: RWF 120,000.
+   Time: 2 min ago.
+
+2. Icon: Package.
+   Text: Stock updated: Laptops (-5).
+   Time: 5 min ago.
+
+3. Icon: User.
+   Text: New customer registered.
+   Time: 8 min ago.
+
+Each activity should have:
+- Small icon.
+- Activity description.
+- Timestamp aligned to the right.
+
+### H. Quick Actions
+
+Create a card beside Recent Activities.
+
+Header:
+- Rocket icon.
+- Title: Quick Actions.
+
+Three action cards:
+
+1. Add Product
+   Icon: Package.
+
+2. Record Sale
+   Icon: Shopping Cart.
+
+3. View Reports
+   Icon: File Chart.
+
+Each action must have:
+- Dark teal background.
+- Turquoise icon.
+- White label.
+- Rounded corners.
+- Hover animation.
+
+## 5. Design System
+
+Use these colors as the foundation:
+
+```css
+:root {
+  --background: #07090a;
+  --sidebar: #05090a;
+  --card: #111516;
+  --card-secondary: #0c1112;
+  --primary: #08d9c0;
+  --primary-dark: #087e73;
+  --text-primary: #ffffff;
+  --text-secondary: #a5acad;
+  --border: #202829;
+  --muted: #747d80;
+  --success: #08d9c0;
+}
+```
+
+Design requirements:
+- Use a nearly black background.
+- Use turquoise as the primary accent.
+- Apply subtle turquoise gradients.
+- Keep cards dark and slightly differentiated from the background.
+- Use thin borders instead of heavy shadows.
+- Use consistent border radii.
+- Use clean, modern sans-serif typography.
+- Avoid excessive spacing.
+- Match the reference screenshot's proportions.
+
+## 6. Functional Requirements
+
+The dashboard should not be just a static image.
+
+Implement:
+- Working sidebar navigation states.
+- Search input interaction.
+- Notification button interaction.
+- Profile dropdown.
+- Date range dropdown.
+- Quick action click handlers.
+- Hover effects on interactive elements.
+- Responsive sidebar behavior on smaller screens.
+- Dynamic chart rendering from sample data.
+
+Use mock data initially. Keep data separated from UI components so it can later be connected to a real API or Supabase database.
+
+## 7. Responsive Design
+
+Desktop:
+- Preserve the original screenshot layout.
+- Sidebar on the left.
+- Three statistics cards in one row.
+- Two chart cards side by side.
+- Recent Activities and Quick Actions side by side.
+
+Tablet:
+- Reduce spacing.
+- Allow statistics cards to wrap.
+- Preserve chart readability.
+
+Mobile:
+- Sidebar becomes a collapsible navigation drawer.
+- Statistics cards stack vertically.
+- Charts stack vertically.
+- Recent Activities and Quick Actions stack vertically.
+- Search input remains accessible.
+
+## 8. Implementation Rules
+
+IMPORTANT:
+
+1. Build every section as a separate reusable component.
+2. Do not create one massive Dashboard.jsx file.
+3. Do not use a screenshot as the dashboard background.
+4. Do not use static image substitutes for charts.
+5. Use actual HTML, CSS, React and SVG-based icons.
+6. Keep all sample data in separate data files.
+7. Use reusable styling patterns.
+8. Maintain consistent spacing and alignment.
+9. Avoid unnecessary dependencies.
+10. Do not introduce extra dashboard sections that are absent from the reference.
+11. Ensure all imports and components work.
+12. Ensure the application runs without console errors.
+
+## 9. Final Quality Assurance
+
+Before completing the project:
+
+- Compare the rendered dashboard with the uploaded screenshot.
+- Check sidebar width and positioning.
+- Check navbar height.
+- Check all card dimensions.
+- Check chart proportions.
+- Check typography and icon sizes.
+- Check turquoise color consistency.
+- Check horizontal and vertical alignment.
+- Check that no content overflows.
+- Test desktop, tablet and mobile layouts.
+
+The final result should look as close as technically possible to the supplied NOZA dashboard screenshot.
+
+Do not stop after creating the layout. Run the application, inspect the actual rendered result, identify visual differences and refine the implementation until the result closely matches the reference.
+
+
+
+
+
+
+
+
+
+
+
+# TASK: Pixel-Accurate NOZA Dashboard UI Replication
+
+Study the attached NOZA dashboard screenshot carefully. Your primary task is to reproduce its visual identity, especially the LEFT SIDEBAR, BACKGROUND DECORATIONS, CARD STYLING, VOICE ASSISTANT and USER ACCOUNT CARD.
+
+Do not create a generic dark admin dashboard. Reproduce the distinctive NOZA design.
+
+## 1. SIDEBAR — Highest Priority
+
+Recreate the sidebar as closely as possible to the reference.
+
+**Dimensions and structure:**
+- Fixed vertical sidebar.
+- Approximately 185px wide at the reference desktop resolution.
+- Full viewport height.
+- Very dark black-green background (#050909).
+- Thin subtle vertical border on the right.
+- Main dashboard content must begin immediately after the sidebar.
+
+**NOZA branding section:**
+- Place the NOZA logo at the top.
+- Use a large turquoise NOZA wordmark.
+- Include the circular emblem above the wordmark.
+- Under the logo, display "Stock Management" in small light-grey text.
+- Add a thin turquoise horizontal separator beneath the branding.
+- Preserve the centered alignment and vertical spacing.
+
+**Navigation section:**
+
+Create seven vertically stacked navigation items:
+
+1. Dashboard
+2. Products
+3. Inventory
+4. Sales
+5. Reports
+6. Settings
+7. Help & Support
+
+Each item must have:
+- A left-aligned icon.
+- White or slightly grey text.
+- Consistent icon size.
+- Consistent horizontal padding.
+- Approximately 42px height.
+- Rounded corners.
+
+**Active navigation design:**
+
+The Dashboard item must have a turquoise-to-dark-green gradient background.
+
+Use:
+- Bright turquoise on the left.
+- Dark teal on the right.
+- White icon and text.
+- Rounded corners.
+- No excessive shadow.
+
+Inactive items should remain transparent, with subtle hover effects.
+
+## 2. SIDEBAR DECORATIVE BACKGROUND
+
+This is a very important part of the design.
+
+The sidebar is NOT simply a plain black rectangle.
+
+Reproduce the decorative turquoise abstract waves visible in the reference:
+
+**Top decoration:**
+- Create elegant curved turquoise lines near the upper-right portion of the sidebar.
+- Use multiple thin, flowing curved strokes.
+- Apply a subtle turquoise glow.
+- Keep the lines behind the content.
+
+**Bottom decoration:**
+- Create a large abstract flowing wave emerging from the bottom-right corner.
+- Use overlapping curved turquoise shapes and gradient strokes.
+- The curves should extend partially from the sidebar edge.
+- Add a subtle luminous teal glow.
+- Maintain the black background as the dominant color.
+
+Implement these decorations using CSS radial gradients, linear gradients, pseudo-elements, or SVG paths.
+
+Do not use random geometric shapes. The background should feel elegant, futuristic, premium and technology-oriented.
+
+The decorations must never interfere with navigation readability.
+
+## 3. NOZA VOICE ASSISTANT CARD
+
+Reproduce the Voice Assistant component near the bottom of the sidebar, above the account card.
+
+This is a distinctive component and must receive special attention.
+
+**Container:**
+- Approximately 160px wide.
+- Dark black/green background.
+- Rounded corners (approximately 15px).
+- Thin turquoise border.
+- Subtle turquoise glow.
+- Compact horizontal layout.
+
+**Inside the card:**
+
+Left:
+- Turquoise audio waveform icon.
+- Several vertical audio bars of different heights.
+- Slight glow around the waveform.
+
+Center:
+- Main text: "Voice Assistant"
+- Subtitle: "Ask or command..."
+
+Right:
+- Small turquoise chevron arrow.
+
+Typography:
+- Main label in white.
+- Subtitle in light grey.
+- Small, clean text.
+
+Hover effect:
+- Slight turquoise background illumination.
+- Border becomes brighter.
+- Arrow moves slightly to the right.
+
+The card should look like an interactive AI assistant entry point, not a normal navigation item.
+
+## 4. USER ACCOUNT / PROFILE CARD
+
+Place this card at the very bottom of the sidebar.
+
+Reproduce the exact visual structure:
+
+**Container:**
+- Full sidebar inner width.
+- Approximately 60px high.
+- Dark charcoal/green background.
+- Thin subtle border.
+- Rounded corners (approximately 13px).
+- Comfortable horizontal padding.
+
+**Elements:**
+
+Left:
+- Circular profile avatar.
+- White outline.
+- Dark interior.
+- White user silhouette icon.
+
+Center:
+- Name: Zendaya
+- Role: Admin
+
+Right:
+- Small downward chevron.
+- Turquoise or light-grey color.
+
+Typography:
+- Zendaya: white, medium weight.
+- Admin: small grey text.
+
+Interactions:
+- Hover effect.
+- Click to open account dropdown.
+- Dropdown can contain Profile, Account Settings and Logout.
+
+Keep this card visually separate from the Voice Assistant card, with a small vertical gap.
+
+## 5. MAIN DASHBOARD BACKGROUND
+
+The background is one of the most important aspects of the screenshot.
+
+Do not use a flat black background everywhere.
+
+Reproduce the reference's layered dark futuristic environment.
+
+**Base background:**
+- Almost black (#07090A).
+- Slight green undertone.
+- Consistent across the main dashboard.
+
+**Upper background decoration:**
+- Add large flowing turquoise abstract ribbons across the top-right area.
+- Use multiple curved layered strokes.
+- Use gradients transitioning between dark teal, turquoise and nearly transparent black.
+- Add subtle luminous edges.
+- Create depth without making the background distracting.
+
+**Background behavior:**
+- Decorations should sit behind dashboard content.
+- Cards must remain readable.
+- Avoid excessive brightness.
+- Use CSS or SVG instead of large background images where possible.
+
+The result should feel like a premium futuristic stock management platform.
+
+## 6. INDIVIDUAL CARD DESIGN SYSTEM
+
+Every dashboard card must have a consistent visual identity.
+
+Do not use plain white cards or generic Tailwind card designs.
+
+**Card background:**
+- Dark charcoal (#101516).
+- Slightly lighter than the main background.
+- Very subtle dark-green undertone.
+
+**Borders:**
+- Thin 1px border.
+- Dark grey-green (#202829).
+- Slightly brighter on hover.
+
+**Corners:**
+- Rounded corners around 14–17px.
+
+**Shadows:**
+- Very subtle shadows.
+- Avoid heavy black shadows.
+- Use occasional low-opacity turquoise glow for highlighted elements.
+
+**Icons:**
+- Turquoise (#08D9C0).
+- Consistent size.
+- Line-style icons.
+- Never mix unrelated icon styles.
+
+**Typography:**
+- Headings: white, medium or semibold.
+- Main values: white, bold.
+- Descriptions: light grey.
+- Secondary labels: muted grey.
+
+## 7. STATISTICS CARDS
+
+Each of the three statistics cards must have:
+
+- Dark charcoal background.
+- Thin dark teal border.
+- Rounded corners.
+- Turquoise icon on the left.
+- Title and value arranged to the right.
+- Growth percentage on the far right.
+- Subtle turquoise upward arrow.
+
+Do not make all the text the same size.
+
+Use clear visual hierarchy:
+- Small grey title.
+- Large bold white value.
+- Small turquoise growth indicator.
+
+## 8. CHART CARDS
+
+Sales Overview:
+- Dark charcoal container.
+- Turquoise chart heading icon.
+- White heading.
+- Subtle chart grid.
+- Turquoise line.
+- Transparent turquoise gradient underneath the line.
+- Dark background.
+- Rounded date filter.
+
+Stock Status:
+- Same card styling.
+- Turquoise donut chart.
+- Dark grey and light grey secondary segments.
+- Large percentage in the center.
+- Clean legend aligned on the right.
+
+## 9. RECENT ACTIVITIES AND QUICK ACTIONS
+
+Both cards must use the same dark card design system.
+
+Recent Activities:
+- Turquoise lightning icon.
+- White heading.
+- Muted timestamps.
+- Small turquoise activity icons.
+- Subtle horizontal separators where appropriate.
+
+Quick Actions:
+- Turquoise rocket icon.
+- Three individually styled dark teal action cards.
+- Turquoise icons.
+- White labels.
+- Rounded corners.
+- Subtle hover illumination.
+
+## 10. EXACT COLOR PALETTE
+
+Use this palette consistently:
+
+```css
+:root {
+  --background: #07090A;
+  --sidebar-background: #050909;
+  --card-background: #101516;
+  --card-hover: #142020;
+
+  --primary: #08D9C0;
+  --primary-light: #19EAD2;
+  --primary-dark: #087E73;
+
+  --border: #202829;
+  --border-highlight: #17645D;
+
+  --text-primary: #FFFFFF;
+  --text-secondary: #B4BABB;
+  --text-muted: #747E80;
+
+  --success: #08D9C0;
+}
+```
+
+## 11. IMPLEMENTATION REQUIREMENTS
+
+- Use React and Tailwind CSS.
+- Use Lucide React icons.
+- Use reusable components.
+- Build the sidebar separately from the dashboard.
+- Build VoiceAssistant.jsx separately.
+- Build UserProfile.jsx separately.
+- Build Logo.jsx separately.
+- Create a reusable DashboardCard component or shared styling system.
+- Use SVG/CSS for the decorative backgrounds.
+- Keep decorative elements independent from content.
+- Use CSS variables for the color palette.
+- Do not embed the screenshot as a background.
+- Do not use emojis as replacement icons.
+
+## 12. FINAL VISUAL TEST
+
+Compare the implementation against the uploaded screenshot.
+
+Pay particular attention to:
+
+1. Sidebar width and background.
+2. NOZA logo positioning.
+3. Decorative turquoise waves at the top and bottom of the sidebar.
+4. Active Dashboard gradient.
+5. Voice Assistant card border, waveform and typography.
+6. User account card positioning and dimensions.
+7. Main dashboard's upper turquoise flowing background.
+8. Card backgrounds, borders, radius and spacing.
+9. Consistency of turquoise throughout the interface.
+
+Do not consider the task complete until these elements closely reproduce the reference.
+
+**IMPORTANT DESIGN DIRECTION:**
+The visual identity must remain dark, elegant, futuristic, turquoise-accented and premium. Preserve the original NOZA design language instead of introducing your own aesthetic.
+
+
+
+
+
+
+
+
+
+
+

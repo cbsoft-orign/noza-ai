@@ -12,5 +12,10 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "lucide-react": "^1.74.0",
+    "react-router-dom": "^7.18.5",
+    "recharts": "^3.10.1"
   }
 }
