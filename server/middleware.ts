@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 function allowedOrigins() {
   const configuredOrigins = process.env.CORS_ORIGINS
-    ?? (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000,http://127.0.0.1:3000');
+    ?? (process.env.NODE_ENV === 'production' ? '' : 'https://noza-ai.vercel.app,http://localhost:3000,http://127.0.0.1:3000');
 
   return new Set(configuredOrigins.split(',').map((origin) => origin.trim()).filter(Boolean));
 }
