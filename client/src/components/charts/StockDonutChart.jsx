@@ -1,18 +1,25 @@
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { PieChart as PieIcon } from 'lucide-react';
 import { stockStatusData } from '../../data/dashboardData';
+import { useApp } from '../../context/useApp';
 
 export default function StockDonutChart() {
+  const { theme } = useApp();
+
   return (
-    <div className="bg-[#111516] border border-[#202829] rounded-2xl p-6 flex flex-col justify-between">
+    <div
+      className={`border rounded-2xl p-6 flex flex-col justify-between shadow-sm ${
+        theme === 'dark' ? 'bg-[#101516] border-[#202829]' : 'bg-white border-slate-200'
+      }`}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#087e73]/20 border border-[#08d9c0]/30 flex items-center justify-center text-[#08d9c0]">
+          <div className="w-9 h-9 rounded-xl bg-[#087E73]/20 border border-[#08D9C0]/30 flex items-center justify-center text-[#08D9C0]">
             <PieIcon className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-bold text-white text-base">Stock Status</h3>
-            <p className="text-xs text-[#a5acad]">Inventory health ratio</p>
+            <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Stock Status</h3>
+            <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Inventory health ratio</p>
           </div>
         </div>
       </div>
@@ -26,25 +33,30 @@ export default function StockDonutChart() {
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{ backgroundColor: '#0c1112', borderColor: '#202829', borderRadius: '12px', color: '#fff' }}
+              contentStyle={{
+                backgroundColor: theme === 'dark' ? '#0C1112' : '#ffffff',
+                borderColor: theme === 'dark' ? '#202829' : '#e2e8f0',
+                borderRadius: '12px',
+                color: theme === 'dark' ? '#fff' : '#0f172a',
+              }}
               formatter={(val) => [`${val}%`, 'Share']}
             />
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-2xl font-black text-white">78%</span>
-          <span className="text-[11px] text-[#08d9c0] font-semibold uppercase tracking-wider">In Stock</span>
+          <span className={`text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>78%</span>
+          <span className="text-[11px] text-[#08D9C0] font-semibold uppercase tracking-wider">In Stock</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#202829] text-center">
+      <div className={`grid grid-cols-3 gap-2 pt-2 border-t ${theme === 'dark' ? 'border-[#202829]' : 'border-slate-200'} text-center`}>
         {stockStatusData.map((item) => (
           <div key={item.name}>
             <div className="flex items-center justify-center gap-1.5">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-              <span className="text-xs text-[#a5acad]">{item.name}</span>
+              <span className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>{item.name}</span>
             </div>
-            <p className="text-sm font-bold text-white mt-0.5">{item.value}%</p>
+            <p className={`text-sm font-bold mt-0.5 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.value}%</p>
           </div>
         ))}
       </div>

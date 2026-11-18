@@ -4,6 +4,7 @@ export const AppContext = createContext();
 
 export function AppProvider({ children }) {
   const [lang, setLang] = useState('en'); // 'en' | 'rw'
+  const [theme, setTheme] = useState('dark'); // 'dark' | 'light'
   const [shop, setShop] = useState({
     id: 'shop-1',
     name: 'Kigali Duka',
@@ -48,6 +49,10 @@ export function AppProvider({ children }) {
       })
       .catch(() => {});
   }, []);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   const addProduct = (newProd) => {
     if (products.length >= 10 && shop.plan === 'free') {
@@ -94,6 +99,8 @@ export function AppProvider({ children }) {
       value={{
         lang,
         setLang,
+        theme,
+        toggleTheme,
         shop,
         setShop,
         user,
