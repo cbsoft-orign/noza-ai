@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Mic, MicOff, X } from 'lucide-react';
 import { useApp } from '../../context/useApp';
+import { apiUrl } from '../../api';
 
 export default function VoiceAIModal({ isOpen, onClose }) {
   const { shop } = useApp();
@@ -10,9 +11,10 @@ export default function VoiceAIModal({ isOpen, onClose }) {
 
   const recordVoiceIntent = useCallback(async () => {
     try {
-      const res = await fetch('/api/voice/transcribe', {
+      const res = await fetch(apiUrl('/api/voice/transcribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ phone: shop.phone, audioUrl: 'https://example.com/voice.ogg' }),
       });
       const data = await res.json();

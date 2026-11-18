@@ -1,37 +1,120 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Send, Sparkles } from 'lucide-react';
 import { useApp } from '../../context/useApp';
+import { apiUrl } from '../../api';
 
 export default function VoiceAssistantPanel() {
-  const { shop, theme } = useApp();
-  const [listening, setListening] = useState(true);
+  const { theme, refreshShopData } = useApp();
+  const [recording, setRecording] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState('');
   const [inputCommand, setInputCommand] = useState('');
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
   const [chatLog, setChatLog] = useState([
     { sender: 'ai', text: 'Muraho! Ndi Voice Assistant yawe. Vuga cyangwa andika (e.g. Gurisha umuceri 2, STOCK).' },
   ]);
 
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!inputCommand.trim()) return;
-
-    const userText = inputCommand;
-    setChatLog((prev) => [...prev, { sender: 'user', text: userText }]);
-    setInputCommand('');
-
+  const runCommand = async (userText) => {
+    setProcessing(true);
+    setError('');
     try {
-      const res = await fetch('/api/whatsapp/webhook', {
+      const res = await fetch(apiUrl('/api/voice/command'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entry: [{ changes: [{ value: { messages: [{ from: shop.phone, type: 'text', text: { body: userText } }] } }] }],
-        }),
+        credentials: 'include',
+        body: JSON.stringify({ text: userText }),
       });
       const data = await res.json();
-      setChatLog((prev) => [...prev, { sender: 'ai', text: data.response || 'Command executed successfully.' }]);
-    } catch {
-      setChatLog((prev) => [...prev, { sender: 'ai', text: `(Demo): Processed "${userText}" successfully.` }]);
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Could not process command.');
+      setChatLog((prev) => [...prev, { sender: 'ai', text: data.response }]);
+      await refreshShopData().catch((refreshError) => setError(refreshError.message || 'Could not refresh shop data.'));
+    } catch (requestError) {
+      setError(requestError.message || 'Could not process command.');
+    } finally {
+      setProcessing(false);
     }
   };
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    const userText = inputCommand.trim();
+    if (!userText || processing) return;
+    setChatLog((prev) => [...prev, { sender: 'user', text: userText }]);
+    setInputCommand('');
+    await runCommand(userText);
+  };
+
+  const handleRecording = async () => {
+    setError('');
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.stop();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('This browser does not support microphone recording.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunks.push(event.data);
+      };
+      recorder.onerror = () => {
+        setError('Microphone recording failed.');
+        setRecording(false);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+        setRecording(false);
+        const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        if (!audio.size) {
+          setError('No audio was recorded. Try again.');
+          return;
+        }
+
+        setProcessing(true);
+        const formData = new FormData();
+        formData.append('audio', audio, 'recording.webm');
+        try {
+          const response = await fetch(apiUrl('/api/voice/transcribe'), {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.message || 'Transcription failed.');
+          setChatLog((prev) => [...prev, { sender: 'user', text: data.transcript }]);
+          await runCommand(data.transcript);
+        } catch (requestError) {
+          setError(requestError.message || 'Could not transcribe audio.');
+        } finally {
+          setProcessing(false);
+        }
+      };
+      recorder.start();
+      setRecording(true);
+    } catch (requestError) {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setError(requestError.message || 'Microphone access was denied.');
+    }
+  };
+
+  useEffect(() => () => {
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   return (
     <div
@@ -52,13 +135,14 @@ export default function VoiceAssistantPanel() {
           </div>
         </div>
         <button
-          onClick={() => setListening(!listening)}
+          onClick={handleRecording}
+          disabled={processing}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-            listening ? 'bg-[#08D9C0]/20 text-[#08D9C0] border border-[#08D9C0]/40' : 'bg-slate-800 text-slate-400 border border-slate-700'
+            recording ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-[#08D9C0]/20 text-[#08D9C0] border border-[#08D9C0]/40'
           }`}
         >
-          {listening ? <Mic className="w-3.5 h-3.5 animate-bounce" /> : <MicOff className="w-3.5 h-3.5" />}
-          <span>{listening ? 'Listening Active' : 'Paused'}</span>
+          {recording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+          <span>{processing ? 'Processing...' : recording ? 'Stop Recording' : 'Speak'}</span>
         </button>
       </div>
 
@@ -68,7 +152,7 @@ export default function VoiceAssistantPanel() {
           <span
             key={i}
             className="w-1 bg-[#08D9C0] rounded-full transition-all duration-300 animate-pulse"
-            style={{ height: listening ? `${h}%` : '20%', animationDelay: `${i * 90}ms` }}
+            style={{ height: recording ? `${h}%` : '20%', animationDelay: `${i * 90}ms` }}
           />
         ))}
       </div>
@@ -84,11 +168,14 @@ export default function VoiceAssistantPanel() {
         ))}
       </div>
 
+      {error && <p className="mb-3 text-xs text-red-400" role="alert">{error}</p>}
+
       <form onSubmit={handleSend} className="flex gap-2">
         <input
           type="text"
           value={inputCommand}
           onChange={(e) => setInputCommand(e.target.value)}
+          disabled={processing}
           placeholder="Type or speak command (e.g. Gurisha umuceri 1)..."
           className={`flex-1 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#08D9C0] border ${
             theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-white placeholder-[#747E80]' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
@@ -96,6 +183,7 @@ export default function VoiceAssistantPanel() {
         />
         <button
           type="submit"
+          disabled={processing}
           className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#087E73] to-[#08D9C0] text-black font-bold text-xs hover:opacity-95 transition flex items-center gap-1"
         >
           <Send className="w-3.5 h-3.5" />

@@ -42,7 +42,10 @@ export async function POST(request: Request) {
     } else if (type === 'audio' || type === 'voice') {
       const mediaId = message.audio?.id ?? message.voice?.id ?? message?.audio?.id;
       const mediaUrl = mediaId ? `https://graph.facebook.com/v19.0/${mediaId}` : null;
-      text = mediaUrl ? await transcribeAudioFromUrl(mediaUrl) : 'Gurisha umuceri 2';
+      if (!mediaUrl) {
+        return NextResponse.json({ ok: false, message: 'Audio media ID required' }, { status: 400 });
+      }
+      text = await transcribeAudioFromUrl(mediaUrl);
     } else if (type === 'image') {
       text = 'Mfite ifoto ya ibicuruzwa';
     }

@@ -2,29 +2,35 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Phone, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { apiUrl } from '../api';
 
 export default function SignIn() {
   const navigate = useNavigate();
-  const { setShop, setUser } = useApp();
-  const [phone, setPhone] = useState('250788000001');
+  const { acceptAuthentication } = useApp();
+  const [phone, setPhone] = useState('');
 
-  const handleSignIn = (e) => {
+  const [error, setError] = useState('');
+
+  const handleSignIn = async (e) => {
     e.preventDefault();
-    setShop({
-      id: 'shop-1',
-      name: 'Kigali Duka',
-      phone: phone,
-      village: 'Nyabugogo',
-      plan: 'free',
-      credits: 20,
-    });
-    setUser({
-      id: 'user-1',
-      name: 'Zendaya',
-      role: 'owner',
-      phone: phone,
-    });
-    navigate('/dashboard');
+    setError('');
+    try {
+      const res = await fetch(apiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.message || 'Shop not found.');
+        return;
+      }
+      acceptAuthentication(data.shop, data.user ?? { id: '', name: '', role: 'owner', phone });
+      navigate('/dashboard');
+    } catch {
+      setError('Backend unavailable.');
+    }
   };
 
   return (
@@ -41,6 +47,7 @@ export default function SignIn() {
         </div>
 
         <form onSubmit={handleSignIn} className="space-y-5">
+          {error && <p className="text-sm text-red-400">{error}</p>}
           <div>
             <label className="block text-xs font-semibold text-[#a5acad] uppercase tracking-wider mb-2">Shop Phone Number</label>
             <div className="relative">

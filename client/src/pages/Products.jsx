@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Package, Plus, Search, Sparkles, AlertTriangle } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { apiUrl } from '../api';
 
 export default function Products() {
   const { shop, products, addProduct, theme } = useApp();
@@ -16,9 +17,9 @@ export default function Products() {
 
   const filteredProducts = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()) || (p.name_kv && p.name_kv.includes(search.toLowerCase())));
 
-  const handleCreateProduct = (e) => {
+  const handleCreateProduct = async (e) => {
     e.preventDefault();
-    const success = addProduct({
+    const success = await addProduct({
       name,
       name_kv: name.toLowerCase(),
       buying_price: Number(buyingPrice) || 0,
@@ -39,7 +40,7 @@ export default function Products() {
   const handleImageScan = async () => {
     setScanning(true);
     try {
-      const res = await fetch('/api/products/from-image', {
+      const res = await fetch(apiUrl('/api/products/from-image'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ village: shop.village }),

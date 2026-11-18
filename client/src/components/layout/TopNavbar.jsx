@@ -1,8 +1,15 @@
-import { Search, Bell, Globe, Sun, Moon, Menu } from 'lucide-react';
+import { Search, Bell, Globe, Sun, Moon, Menu, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
 
 export default function TopNavbar({ onToggleMobileSidebar }) {
-  const { lang, setLang, theme, toggleTheme, user, backendStatus } = useApp();
+  const navigate = useNavigate();
+  const { lang, setLang, theme, toggleTheme, user, backendStatus, logout } = useApp();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/signin', { replace: true });
+  };
 
   return (
     <header className={`h-[64px] ${theme === 'dark' ? 'bg-[#07090A]/90 border-[#202829]' : 'bg-white/90 border-slate-200'} backdrop-blur-md border-b px-4 md:px-6 flex items-center justify-between sticky top-0 z-20 transition-colors`}>
@@ -67,6 +74,13 @@ export default function TopNavbar({ onToggleMobileSidebar }) {
         <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#087E73] to-[#08D9C0] text-black font-black flex items-center justify-center text-sm shadow-md">
           {user.name.charAt(0)}
         </div>
+        <button
+          onClick={handleLogout}
+          className={`p-2 rounded-xl border transition ${theme === 'dark' ? 'bg-[#101516] border-[#202829] text-[#B4BABB] hover:text-red-400' : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-red-500'}`}
+          title="Sign out"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
     </header>
   );

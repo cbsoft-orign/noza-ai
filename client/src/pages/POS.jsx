@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ShoppingCart, Mic, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { apiUrl } from '../api';
 
 export default function POS() {
-  const { products, recordSale, shop, theme } = useApp();
+  const { products, recordSale, theme, refreshShopData } = useApp();
   const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || 1);
   const [quantity, setQuantity] = useState(1);
   const [soldBy, setSoldBy] = useState('owner');
@@ -15,10 +16,13 @@ export default function POS() {
     { sender: 'shop', text: 'Muraho! Send a text or voice command (e.g. STOCK, Gurisha umuceri 2, Mfite isukari 5)' },
   ]);
   const [transcribing, setTranscribing] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef(null);
 
-  const handleCheckout = (e) => {
+  const handleCheckout = async (e) => {
     e.preventDefault();
-    recordSale(selectedProductId, Number(quantity), soldBy);
+    const recorded = await recordSale(selectedProductId, Number(quantity), soldBy);
+    if (!recorded) return;
     const prod = products.find((p) => p.id === Number(selectedProductId));
     setSuccessMsg(`Successfully sold ${quantity} ${prod?.unit || 'unit'} of ${prod?.name || 'product'}! Profit added.`);
     setTimeout(() => setSuccessMsg(''), 4000);
@@ -33,44 +37,89 @@ export default function POS() {
     setWhatsappText('');
 
     try {
-      const res = await fetch('/api/whatsapp/webhook', {
+      const res = await fetch(apiUrl('/api/voice/command'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entry: [{ changes: [{ value: { messages: [{ from: shop.phone, type: 'text', text: { body: userMsg } }] } }] }],
-        }),
+        credentials: 'include',
+        body: JSON.stringify({ text: userMsg }),
       });
       const data = await res.json();
-      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response || 'Command executed successfully.' }]);
-    } catch {
-      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: `(Demo response): Processed "${userMsg}" successfully and updated inventory.` }]);
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Command failed.');
+      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
+    } catch (error) {
+      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || 'Could not process command.' }]);
     }
   };
 
-  const simulateVoiceNote = async () => {
-    setTranscribing(true);
+  const handleVoiceCommand = async () => {
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.stop();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: 'Microphone recording is not supported in this browser.' }]);
+      return;
+    }
+
     try {
-      const res = await fetch('/api/voice/transcribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: shop.phone, audioUrl: 'https://example.com/voice.ogg' }),
-      });
-      const data = await res.json();
-      setWhatsappLog((prev) => [
-        ...prev,
-        { sender: 'user', text: `[Voice Note]: "${data.transcript || 'Mfite umuceri 2'}"` },
-        { sender: 'shop', text: data.response || 'Voice intent executed.' },
-      ]);
-    } catch {
-      setWhatsappLog((prev) => [
-        ...prev,
-        { sender: 'user', text: '[Voice Note]: "Gurisha isukari 1"' },
-        { sender: 'shop', text: 'Isukari 1 yagurishijwe - Inyungu 350 RWF' },
-      ]);
-    } finally {
-      setTranscribing(false);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunks.push(event.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        setRecording(false);
+        const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        if (!audio.size) return;
+        setTranscribing(true);
+        try {
+          const form = new FormData();
+          form.append('audio', audio, 'recording.webm');
+          const transcriptResponse = await fetch(apiUrl('/api/voice/transcribe'), {
+            method: 'POST',
+            credentials: 'include',
+            body: form,
+          });
+          const transcriptData = await transcriptResponse.json();
+          if (!transcriptResponse.ok || !transcriptData.ok) {
+            throw new Error(transcriptData.message || 'Transcription failed.');
+          }
+          setWhatsappLog((prev) => [...prev, { sender: 'user', text: transcriptData.transcript }]);
+          const commandResponse = await fetch(apiUrl('/api/voice/command'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ text: transcriptData.transcript }),
+          });
+          const commandData = await commandResponse.json();
+          if (!commandResponse.ok || !commandData.ok) throw new Error(commandData.message || 'Voice command failed.');
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: commandData.response }]);
+          await refreshShopData().catch((refreshError) => {
+            setWhatsappLog((prev) => [...prev, { sender: 'shop', text: refreshError.message || 'Could not refresh shop data.' }]);
+          });
+        } catch (error) {
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || 'Voice command failed.' }]);
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      recorder.start();
+      setRecording(true);
+    } catch (error) {
+      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || 'Could not access the microphone.' }]);
     }
   };
+
+  useEffect(() => () => {
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -171,12 +220,12 @@ export default function POS() {
               </div>
               <button
                 type="button"
-                onClick={simulateVoiceNote}
+                onClick={handleVoiceCommand}
                 disabled={transcribing}
                 className="px-3.5 py-2 rounded-xl bg-[#087E73]/20 border border-[#08D9C0]/40 text-xs font-bold text-[#08D9C0] hover:bg-[#087E73]/40 transition flex items-center gap-1.5"
               >
                 <Mic className="w-4 h-4 animate-pulse" />
-                <span>{transcribing ? 'Transcribing...' : 'Simulate Voice Note'}</span>
+                <span>{transcribing ? 'Processing...' : recording ? 'Stop Recording' : 'Speak Command'}</span>
               </button>
             </div>
 

@@ -72,33 +72,6 @@ export const db = {
   payments: [] as Payment[],
 };
 
-function seedData() {
-  if (db.shops.length > 0) return;
-
-  const shopA = {
-    id: 'shop-1',
-    phone: '250788000001',
-    name: 'Kigali Duka',
-    village: 'Nyabugogo',
-    created_at: new Date().toISOString(),
-    plan: 'free' as const,
-    credits: 20,
-  };
-
-  db.shops.push(shopA);
-
-  db.products.push(
-    { id: 1, shop_id: shopA.id, name: 'Umuceri', name_kv: 'umuceri', buying_price: 1200, selling_price: 1500, quantity: 15, unit: 'kg', parent_id: null, low_stock_threshold: 5, village: 'Nyabugogo' },
-    { id: 2, shop_id: shopA.id, name: 'Isukari', name_kv: 'isukari', buying_price: 900, selling_price: 1250, quantity: 10, unit: 'kg', parent_id: null, low_stock_threshold: 3, village: 'Nyabugogo' },
-    { id: 3, shop_id: shopA.id, name: 'Bread Loaf', name_kv: 'bread loaf', buying_price: 200, selling_price: 350, quantity: 10, unit: 'loaf', parent_id: null, low_stock_threshold: 2, village: 'Nyabugogo' },
-    { id: 4, shop_id: shopA.id, name: 'Bread Slice', name_kv: 'bread slice', buying_price: 20, selling_price: 40, quantity: 20, unit: 'slice', parent_id: 3, low_stock_threshold: 1, village: 'Nyabugogo' },
-    { id: 5, shop_id: shopA.id, name: 'Icyayi', name_kv: 'icyayi', buying_price: 1900, selling_price: 2500, quantity: 8, unit: 'cup', parent_id: null, low_stock_threshold: 2, village: 'Nyabugogo' },
-  );
-
-  db.users.push({ id: 'user-1', shop_id: shopA.id, phone: '250788000001', role: 'owner', name: 'Owner' });
-}
-
-seedData();
 
 export function getShopByPhone(phone: string) {
   return db.shops.find((shop) => shop.phone === phone);

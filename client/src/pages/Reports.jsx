@@ -1,20 +1,21 @@
 import { useState } from 'react';
 import { FileText, TrendingUp, DollarSign, Send, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { apiUrl } from '../api';
 
 export default function Reports() {
   const { sales, shop, theme } = useApp();
   const [triggering, setTriggering] = useState(false);
   const [reportSent, setReportSent] = useState(false);
 
-  const totalSalesRevenue = sales.reduce((sum, s) => sum + s.quantity_sold * s.selling_price_at_time, 0) + 3580000;
-  const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0) + 1050000;
-  const totalItemsSold = sales.reduce((sum, s) => sum + s.quantity_sold, 0) + 420;
+  const totalSalesRevenue = sales.reduce((sum, s) => sum + s.quantity_sold * s.selling_price_at_time, 0);
+  const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0);
+  const totalItemsSold = sales.reduce((sum, s) => sum + s.quantity_sold, 0);
 
   const triggerDailyReport = async () => {
     setTriggering(true);
     try {
-      const res = await fetch('/api/cron/daily-report');
+      const res = await fetch(apiUrl('/api/cron/daily-report'));
       const data = await res.json();
       if (data.ok) {
         setReportSent(true);

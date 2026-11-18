@@ -2,32 +2,38 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Store, MapPin, Phone, User, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { apiUrl } from '../api';
 
 export default function SignUp() {
   const navigate = useNavigate();
-  const { setShop, setUser } = useApp();
-  const [shopName, setShopName] = useState('Rubavu Duka');
-  const [ownerName, setOwnerName] = useState('Jean Paul');
-  const [phone, setPhone] = useState('250789000000');
+  const { acceptAuthentication } = useApp();
+  const [shopName, setShopName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [phone, setPhone] = useState('');
   const [village, setVillage] = useState('Nyabugogo');
 
-  const handleSignUp = (e) => {
+  const [error, setError] = useState('');
+
+  const handleSignUp = async (e) => {
     e.preventDefault();
-    setShop({
-      id: `shop-${Date.now()}`,
-      name: shopName,
-      phone: phone,
-      village: village,
-      plan: 'free',
-      credits: 20,
-    });
-    setUser({
-      id: `user-${Date.now()}`,
-      name: ownerName,
-      role: 'owner',
-      phone: phone,
-    });
-    navigate('/dashboard');
+    setError('');
+    try {
+      const res = await fetch(apiUrl('/api/shop'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: shopName, phone, village, ownerName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.message || 'Could not create shop.');
+        return;
+      }
+      acceptAuthentication(data.shop, data.user);
+      navigate('/dashboard');
+    } catch {
+      setError('Backend unavailable.');
+    }
   };
 
   return (
@@ -44,6 +50,7 @@ export default function SignUp() {
         </div>
 
         <form onSubmit={handleSignUp} className="space-y-4">
+          {error && <p className="text-sm text-red-400">{error}</p>}
           <div>
             <label className="block text-xs font-semibold text-[#a5acad] uppercase tracking-wider mb-1.5">Shop Name (Iduka)</label>
             <div className="relative">

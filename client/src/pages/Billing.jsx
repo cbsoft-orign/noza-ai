@@ -1,20 +1,24 @@
 import { useState } from 'react';
 import { CreditCard, CheckCircle2, Zap } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { apiUrl } from '../api';
 
 export default function Billing() {
   const { shop, upgradePlan, theme } = useApp();
   const [selectedPlan, setSelectedPlan] = useState('200_daily');
   const [momoRef, setMomoRef] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handlePayment = async (e) => {
     e.preventDefault();
+    setErrorMsg('');
     const amount = selectedPlan === '5000_monthly' ? 5000 : 200;
     try {
-      const res = await fetch('/api/payments', {
+      const res = await fetch(apiUrl('/api/payments'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           phone: shop.phone,
           type: selectedPlan,
@@ -23,15 +27,15 @@ export default function Billing() {
         }),
       });
       const data = await res.json();
-      if (data.ok) {
+      if (res.ok && data.ok) {
         upgradePlan(selectedPlan);
         setSuccessMsg(`Successfully upgraded to ${selectedPlan === '5000_monthly' ? 'Monthly' : 'Daily'} Plan!`);
         setTimeout(() => setSuccessMsg(''), 5000);
+      } else {
+        setErrorMsg(data.message || 'Payment could not be processed.');
       }
     } catch {
-      upgradePlan(selectedPlan);
-      setSuccessMsg(`Successfully upgraded to ${selectedPlan === '5000_monthly' ? 'Monthly' : 'Daily'} Plan!`);
-      setTimeout(() => setSuccessMsg(''), 5000);
+      setErrorMsg('Backend unavailable.');
     }
   };
 
@@ -46,6 +50,11 @@ export default function Billing() {
         <div className="p-4 rounded-2xl bg-[#087E73]/20 border border-[#08D9C0] text-[#08D9C0] font-semibold text-sm flex items-center gap-2 animate-fadeIn">
           <CheckCircle2 className="w-5 h-5" />
           <span>{successMsg}</span>
+        </div>
+      )}
+      {errorMsg && (
+        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/40 text-red-400 font-semibold text-sm">
+          {errorMsg}
         </div>
       )}
 

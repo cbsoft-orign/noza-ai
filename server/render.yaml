@@ -1,10 +1,14 @@
 services:
   - type: web
     name: stock-ai-backend
-    runtime: node
+    runtime: docker
+    plan: pro
     rootDir: server
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: PORT
+        value: "3001"
 
   - type: cron
     name: stock-ai-health-ping

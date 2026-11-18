@@ -1,4 +1,5 @@
-import { createContext, useState, useEffect } from 'react';
+import { createContext, useState, useEffect, useRef } from 'react';
+import { apiUrl } from '../api';
 
 export const AppContext = createContext();
 
@@ -6,87 +7,166 @@ export function AppProvider({ children }) {
   const [lang, setLang] = useState('en'); // 'en' | 'rw'
   const [theme, setTheme] = useState('dark'); // 'dark' | 'light'
   const [shop, setShop] = useState({
-    id: 'shop-1',
-    name: 'Kigali Duka',
-    phone: '250788000001',
-    village: 'Nyabugogo',
+    id: '',
+    name: '',
+    phone: '',
+    village: '',
     plan: 'free',
-    credits: 20,
+    credits: 0,
   });
   const [user, setUser] = useState({
-    id: 'user-1',
-    name: 'Zendaya',
+    id: '',
+    name: '',
     role: 'owner', // 'owner' | 'worker'
-    phone: '250788000001',
+    phone: '',
   });
-  const [products, setProducts] = useState([
-    { id: 1, shop_id: 'shop-1', name: 'Umuceri', name_kv: 'umuceri', buying_price: 1200, selling_price: 1500, quantity: 15, unit: 'kg', low_stock_threshold: 5 },
-    { id: 2, shop_id: 'shop-1', name: 'Isukari', name_kv: 'isukari', buying_price: 900, selling_price: 1250, quantity: 10, unit: 'kg', low_stock_threshold: 3 },
-    { id: 3, shop_id: 'shop-1', name: 'Bread Loaf', name_kv: 'bread loaf', buying_price: 200, selling_price: 350, quantity: 10, unit: 'loaf', low_stock_threshold: 2 },
-    { id: 4, shop_id: 'shop-1', name: 'Bread Slice', name_kv: 'bread slice', buying_price: 20, selling_price: 40, quantity: 20, unit: 'slice', low_stock_threshold: 1 },
-    { id: 5, shop_id: 'shop-1', name: 'Icyayi', name_kv: 'icyayi', buying_price: 1900, selling_price: 2500, quantity: 8, unit: 'cup', low_stock_threshold: 2 },
-  ]);
+  const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
-  const [activities, setActivities] = useState([
-    { id: 1, type: 'sale', text: 'New sale: RWF 120,000 (Umuceri)', time: '2 min ago' },
-    { id: 2, type: 'stock', text: 'Stock updated: Isukari (+10 kg)', time: '5 min ago' },
-    { id: 3, type: 'customer', text: 'New shop worker registered', time: '8 min ago' },
-  ]);
+  const [activities, setActivities] = useState([]);
   const [backendStatus, setBackendStatus] = useState('Checking...');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const authRequestVersion = useRef(0);
+
+  const acceptAuthentication = (nextShop, nextUser) => {
+    authRequestVersion.current += 1;
+    setShop(nextShop);
+    setUser(nextUser);
+    setIsAuthenticated(true);
+    setAuthLoading(false);
+  };
+
+  const logout = async () => {
+    authRequestVersion.current += 1;
+    try {
+      await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
+    } finally {
+      setIsAuthenticated(false);
+      setShop({ id: '', name: '', phone: '', village: '', plan: 'free', credits: 0 });
+      setUser({ id: '', name: '', role: 'owner', phone: '' });
+      setProducts([]);
+      setSales([]);
+    }
+  };
+
+  const refreshShopData = async () => {
+    if (!shop.phone || !isAuthenticated) return;
+    const res = await fetch(apiUrl(`/api/shop?phone=${encodeURIComponent(shop.phone)}`), { credentials: 'include' });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.message || 'Could not refresh shop data.');
+    }
+    setShop(data.shop);
+    setProducts(data.products);
+    setSales(data.sales);
+  };
 
   useEffect(() => {
-    fetch('/api/health')
+    fetch(apiUrl('/api/health'))
       .then((res) => res.json())
       .then((data) => setBackendStatus(data.ok ? 'Connected (Backend Active)' : 'Offline'))
-      .catch(() => setBackendStatus('Connected (Demo Mode)'));
+      .catch(() => setBackendStatus('Offline'));
 
-    fetch('/api/dashboard')
+    const requestVersion = ++authRequestVersion.current;
+    fetch(apiUrl('/api/auth/session'), { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
-        if (data.ok && data.summary) {
-          // Sync summary if needed
+        if (requestVersion !== authRequestVersion.current) return;
+        if (data.authenticated) {
+          setShop(data.shop);
+          setUser(data.user);
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
+      })
+      .finally(() => {
+        if (requestVersion === authRequestVersion.current) setAuthLoading(false);
+      })
+      .catch(() => {
+        if (requestVersion !== authRequestVersion.current) return;
+        setIsAuthenticated(false);
+        setAuthLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!shop.phone || !isAuthenticated) return;
+    fetch(apiUrl(`/api/shop?phone=${encodeURIComponent(shop.phone)}`), { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok) {
+          setShop(data.shop);
+          setProducts(data.products);
+          setSales(data.sales);
+        } else if (res.status === 401 || res.status === 403) {
+          authRequestVersion.current += 1;
+          setIsAuthenticated(false);
+          setShop({ id: '', name: '', phone: '', village: '', plan: 'free', credits: 0 });
+          setUser({ id: '', name: '', role: 'owner', phone: '' });
+          setProducts([]);
+          setSales([]);
         }
       })
       .catch(() => {});
-  }, []);
+  }, [shop.phone, isAuthenticated]);
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  const addProduct = (newProd) => {
+  const addProduct = async (newProd) => {
     if (products.length >= 10 && shop.plan === 'free') {
       alert(lang === 'rw' ? 'Wageze ku mpera ya Free Plan (ibicuruzwa 10). Andika ISHYURA 200.' : 'Free plan limit reached (10 products). Please upgrade via MoMo.');
       return false;
     }
-    const item = { id: Date.now(), shop_id: shop.id, ...newProd };
-    setProducts((prev) => [item, ...prev]);
-    setActivities((prev) => [{ id: Date.now(), type: 'stock', text: `Stock updated: ${item.name} (+${item.quantity})`, time: 'Just now' }, ...prev]);
-    return true;
+    try {
+      const res = await fetch(apiUrl('/api/products'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ shop_id: shop.id, ...newProd }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        alert(data.message || 'Could not add product.');
+        return false;
+      }
+      setProducts((prev) => [data.item, ...prev]);
+      setActivities((prev) => [{ id: Date.now(), type: 'stock', text: `Stock updated: ${data.item.name} (+${data.item.quantity})`, time: 'Just now' }, ...prev]);
+      return true;
+    } catch {
+      alert('Backend unavailable. Could not add product.');
+      return false;
+    }
   };
 
-  const recordSale = (productId, qty, soldBy = user.role) => {
+  const recordSale = async (productId, qty, soldBy = user.role) => {
     const product = products.find((p) => p.id === Number(productId));
-    if (!product) return;
-    const profit = qty * (product.selling_price - product.buying_price);
-    const saleEntry = {
-      id: `sale-${Date.now()}`,
-      product_id: product.id,
-      product_name: product.name,
-      quantity_sold: qty,
-      selling_price_at_time: product.selling_price,
-      profit,
-      sold_by: soldBy,
-      created_at: new Date().toISOString(),
-    };
-    setSales((prev) => [saleEntry, ...prev]);
-    setProducts((prev) =>
-      prev.map((p) => (p.id === product.id ? { ...p, quantity: Math.max(0, Number((p.quantity - qty).toFixed(2))) } : p))
-    );
-    setActivities((prev) => [
-      { id: Date.now(), type: 'sale', text: `New sale: RWF ${(qty * product.selling_price).toLocaleString()} (${product.name} x${qty})`, time: 'Just now' },
-      ...prev,
-    ]);
+    if (!product) return false;
+    try {
+      const res = await fetch(apiUrl('/api/sales'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ shop_id: shop.id, product_id: product.id, quantity: qty, sold_by: soldBy }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        alert(data.message || 'Could not record sale.');
+        return false;
+      }
+      setSales((prev) => [data.item, ...prev]);
+      setProducts((prev) => prev.map((p) => (p.id === data.product.id ? data.product : p)));
+      setActivities((prev) => [
+        { id: Date.now(), type: 'sale', text: `New sale: RWF ${(qty * product.selling_price).toLocaleString()} (${product.name} x${qty})`, time: 'Just now' },
+        ...prev,
+      ]);
+      return true;
+    } catch {
+      alert('Backend unavailable. Could not record sale.');
+      return false;
+    }
   };
 
   const upgradePlan = (planType) => {
@@ -111,6 +191,11 @@ export function AppProvider({ children }) {
         recordSale,
         activities,
         backendStatus,
+        isAuthenticated,
+        authLoading,
+        acceptAuthentication,
+        refreshShopData,
+        logout,
         upgradePlan,
       }}
     >

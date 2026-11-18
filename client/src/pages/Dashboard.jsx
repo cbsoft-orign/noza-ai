@@ -5,13 +5,11 @@ import StockDonutChart from '../components/charts/StockDonutChart';
 import RecentActivities from '../components/dashboard/RecentActivities';
 import QuickActions from '../components/dashboard/QuickActions';
 import VoiceAssistantPanel from '../components/dashboard/VoiceAssistantPanel';
-import { defaultStats } from '../data/dashboardData';
-
 export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fadeIn">
       <WelcomeHeader />
-      <StatisticsSection stats={defaultStats} />
+      <StatisticsSection />
 
       {/* Embedded Voice Assistant in Dashboard Area */}
       <VoiceAssistantPanel />

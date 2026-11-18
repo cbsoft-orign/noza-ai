@@ -1,10 +1,19 @@
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { BarChart2, ChevronDown } from 'lucide-react';
-import { salesOverviewData } from '../../data/dashboardData';
 import { useApp } from '../../context/useApp';
 
 export default function SalesLineChart() {
-  const { theme } = useApp();
+  const { theme, sales } = useApp();
+  const salesByDate = sales.reduce((groups, sale) => {
+    const date = new Date(sale.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const amount = Number(sale.quantity_sold) * Number(sale.selling_price_at_time);
+    const profit = Number(sale.profit);
+    groups[date] = groups[date] || { date, sales: 0, profit: 0 };
+    groups[date].sales += amount;
+    groups[date].profit += profit;
+    return groups;
+  }, {});
+  const chartData = Object.values(salesByDate);
 
   return (
     <div
@@ -36,7 +45,7 @@ export default function SalesLineChart() {
 
       <div className="h-[240px] w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={salesOverviewData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#08D9C0" stopOpacity={0.4} />
