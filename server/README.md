@@ -58,6 +58,9 @@ Minimal Next.js 14 backend for a WhatsApp + voice stock manager for Rwanda.
 ## Render health ping
 The `server/render.yaml` Blueprint defines a Render Cron Job that calls the health URL every five minutes. Set its `HEALTH_URL` environment variable in Render to your deployed service URL, for example `https://your-service.onrender.com/api/health`. The cron job fails visibly in its logs if the request fails.
 
+## Render frontend connection
+For a frontend hosted separately from the backend, set `VITE_API_URL` in the frontend Render service to the backend's base URL (for example, `https://your-backend.onrender.com`, without a trailing slash). Set the backend's `CORS_ORIGINS` environment variable to the exact frontend origin (for example, `https://your-frontend.onrender.com`, without a path or trailing slash). Multiple origins can be comma-separated. The backend uses credentialed CORS so the frontend's session cookie works; do not use `*` as an allowed origin.
+
 The Blueprint builds the web service from `server/Dockerfile`. The image installs FFmpeg and the local Python models, so the first build downloads several gigabytes of model and runtime dependencies. The Whisper base model handles English, French, and Swahili. OpenAI Whisper does not include Kinyarwanda in its language inventory, so the app routes low-confidence or unsupported detections to a Kinyarwanda fine-tune; this routing is best-effort, especially for Kinyarwanda that Whisper confidently misidentifies as Swahili.
 
 Local model inference needs more memory than Render's free web-service tier provides reliably. The Blueprint selects Render's Pro plan (4 GB RAM); transcription runs on CPU and can take several seconds. The image preloads model weights during its build, so API requests do not need an external AI key or model download.

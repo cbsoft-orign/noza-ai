@@ -54,7 +54,7 @@ export function shopSessionCookie(value: string) {
     name: SHOP_SESSION_COOKIE,
     value,
     httpOnly: true,
-    sameSite: 'lax' as const,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' as const : 'lax' as const,
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: SESSION_TTL_MS / 1000,

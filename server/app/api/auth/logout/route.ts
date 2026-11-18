@@ -5,7 +5,7 @@ export async function POST() {
   const response = NextResponse.json({ ok: true, authenticated: false });
   response.cookies.set(SHOP_SESSION_COOKIE, '', {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: 0,
