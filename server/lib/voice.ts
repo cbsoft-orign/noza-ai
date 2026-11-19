@@ -1,15 +1,41 @@
-import { execFile } from 'child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { promisify } from 'util';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 
-const execFileAsync = promisify(execFile);
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const GRAPH_API_HOST = 'graph.facebook.com';
 const WHATSAPP_MEDIA_HOSTS = ['fbsbx.com', 'fbcdn.net'];
 let transcriptionQueue: Promise<void> = Promise.resolve();
+
+type WorkerResponse = {
+  requestId: string;
+  text?: string;
+  error?: string;
+};
+
+type PendingTranscription = {
+  resolve: (text: string) => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+};
+
+type TranscriptionWorker = {
+  child: ChildProcessWithoutNullStreams;
+  scriptVersion: string;
+  pending: Map<string, PendingTranscription>;
+  outputBuffer: string;
+  nextRequestId: number;
+  stopped: boolean;
+};
+
+type TranscriptionWorkerGlobals = typeof globalThis & {
+  nozaTranscriptionWorker?: TranscriptionWorker;
+  nozaTranscriptionWorkerShutdownRegistered?: boolean;
+};
+
+const workerGlobals = globalThis as TranscriptionWorkerGlobals;
 
 function isWhatsAppMediaHost(hostname: string) {
   return WHATSAPP_MEDIA_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`));
@@ -91,50 +117,180 @@ async function downloadAudio(url: string) {
   return Buffer.concat(chunks, totalBytes);
 }
 
-async function runLocalTranscription(buffer: Buffer, extension = 'ogg') {
+function workerProcessError(error: Error) {
+  const processError = error as NodeJS.ErrnoException;
+  if (processError.code === 'ENOENT' || String(processError.code) === '9009' || /Python was not found/i.test(error.message)) {
+    return new Error('Python 3.10+ is required for Whisper. Create the server .venv and install requirements; see the Windows setup instructions in server/README.md.');
+  }
+  return error;
+}
+
+function stopTranscriptionWorker(worker: TranscriptionWorker, error: Error) {
+  if (worker.stopped) {
+    return;
+  }
+  worker.stopped = true;
+  for (const pending of worker.pending.values()) {
+    clearTimeout(pending.timeout);
+    pending.reject(error);
+  }
+  worker.pending.clear();
+  if (workerGlobals.nozaTranscriptionWorker === worker) {
+    delete workerGlobals.nozaTranscriptionWorker;
+  }
+}
+
+function handleWorkerOutput(worker: TranscriptionWorker, chunk: string) {
+  worker.outputBuffer += chunk;
+  let newlineIndex = worker.outputBuffer.indexOf('\n');
+  while (newlineIndex !== -1) {
+    const line = worker.outputBuffer.slice(0, newlineIndex).trim();
+    worker.outputBuffer = worker.outputBuffer.slice(newlineIndex + 1);
+    newlineIndex = worker.outputBuffer.indexOf('\n');
+    if (!line) {
+      continue;
+    }
+
+    let response: WorkerResponse;
+    try {
+      response = JSON.parse(line) as WorkerResponse;
+    } catch {
+      stopTranscriptionWorker(worker, new Error('Transcription worker returned invalid output'));
+      worker.child.kill();
+      return;
+    }
+
+    const pending = worker.pending.get(response.requestId);
+    if (!pending) {
+      continue;
+    }
+    worker.pending.delete(response.requestId);
+    clearTimeout(pending.timeout);
+    if (response.error) {
+      pending.reject(new Error(response.error));
+    } else if (response.text?.trim()) {
+      pending.resolve(response.text.trim());
+    } else {
+      pending.reject(new Error('Transcription worker returned an empty transcript'));
+    }
+  }
+}
+
+async function getTranscriptionWorker() {
+  const script = path.join(process.cwd(), 'scripts', 'transcribe.py');
+  const scriptStats = await fs.stat(script);
+  const scriptVersion = `${scriptStats.mtimeMs}:${scriptStats.size}`;
+  const existing = workerGlobals.nozaTranscriptionWorker;
+  if (
+    existing &&
+    !existing.stopped &&
+    existing.child.exitCode === null &&
+    existing.scriptVersion === scriptVersion
+  ) {
+    return existing;
+  }
+  if (existing && !existing.stopped && existing.child.exitCode === null) {
+    stopTranscriptionWorker(existing, new Error('Transcription worker script changed; restarting worker'));
+    existing.child.kill();
+  }
+
+  let python = process.env.PYTHON_BIN;
+  let pythonArgs: string[] = [];
+  if (!python && process.platform === 'win32') {
+    const virtualEnvPython = path.join(process.cwd(), '.venv', 'Scripts', 'python.exe');
+    try {
+      await fs.access(virtualEnvPython);
+      python = virtualEnvPython;
+    } catch {
+      python = 'py';
+      pythonArgs = ['-3'];
+    }
+  } else if (!python) {
+    python = 'python3';
+  }
+
+  const child = spawn(python, [...pythonArgs, script, '--worker'], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const worker: TranscriptionWorker = {
+    child,
+    scriptVersion,
+    pending: new Map(),
+    outputBuffer: '',
+    nextRequestId: 0,
+    stopped: false,
+  };
+  workerGlobals.nozaTranscriptionWorker = worker;
+
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => handleWorkerOutput(worker, chunk));
+  child.stderr.on('data', (chunk: Buffer | string) => {
+    const detail = chunk.toString().trim();
+    if (detail) {
+      console.error('Transcription worker:', detail);
+    }
+  });
+  child.on('error', (error) => stopTranscriptionWorker(worker, workerProcessError(error)));
+  child.on('exit', (code, signal) => {
+    stopTranscriptionWorker(
+      worker,
+      new Error(`Transcription worker exited unexpectedly (${code ?? signal ?? 'unknown'})`),
+    );
+  });
+  child.stdin.on('error', (error) => stopTranscriptionWorker(worker, workerProcessError(error)));
+
+  if (!workerGlobals.nozaTranscriptionWorkerShutdownRegistered) {
+    workerGlobals.nozaTranscriptionWorkerShutdownRegistered = true;
+    const shutdown = () => workerGlobals.nozaTranscriptionWorker?.child.kill();
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+    process.once('exit', shutdown);
+  }
+
+  return worker;
+}
+
+async function transcribeWithWorker(audioFile: string, preferredLanguage: 'auto' | 'rw', vocabulary: string[]) {
+  const worker = await getTranscriptionWorker();
+  const requestId = String(++worker.nextRequestId);
+  return new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      stopTranscriptionWorker(worker, new Error('Local transcription timed out'));
+      worker.child.kill();
+    }, 180_000);
+    worker.pending.set(requestId, { resolve, reject, timeout });
+    worker.child.stdin.write(`${JSON.stringify({ requestId, audioPath: audioFile, preferredLanguage, vocabulary })}\n`, (error) => {
+      if (error) {
+        const pending = worker.pending.get(requestId);
+        if (pending) {
+          worker.pending.delete(requestId);
+          clearTimeout(pending.timeout);
+          pending.reject(workerProcessError(error));
+        }
+      }
+    });
+  });
+}
+
+async function runLocalTranscription(
+  buffer: Buffer,
+  extension = 'ogg',
+  preferredLanguage: 'auto' | 'rw' = 'auto',
+  vocabulary: string[] = [],
+) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'noza-whisper-'));
   const safeExtension = /^[a-z0-9]{2,5}$/i.test(extension) ? extension : 'ogg';
   const audioFile = path.join(tempDir, `voice.${safeExtension}`);
   try {
     await fs.writeFile(audioFile, buffer);
-    let python = process.env.PYTHON_BIN;
-    let pythonArgs: string[] = [];
-    if (!python && process.platform === 'win32') {
-      const virtualEnvPython = path.join(process.cwd(), '.venv', 'Scripts', 'python.exe');
-      try {
-        await fs.access(virtualEnvPython);
-        python = virtualEnvPython;
-      } catch {
-        python = 'py';
-        pythonArgs = ['-3'];
-      }
-    } else if (!python) {
-      python = 'python3';
+    return await transcribeWithWorker(audioFile, preferredLanguage, vocabulary);
+  } catch (error) {
+    if (error instanceof Error && /ffmpeg/i.test(error.message)) {
+      throw new Error('FFmpeg is required for Whisper and must be available on PATH.');
     }
-    const script = path.join(process.cwd(), 'scripts', 'transcribe.py');
-    let stdout: string;
-    try {
-      ({ stdout } = await execFileAsync(python, [...pythonArgs, script, audioFile], {
-        timeout: 180_000,
-        maxBuffer: 1024 * 1024,
-        env: process.env,
-      }));
-    } catch (error) {
-      const processError = error as NodeJS.ErrnoException & { stderr?: string };
-      const detail = `${processError.message}\n${processError.stderr ?? ''}`;
-      if (processError.code === 'ENOENT' || String(processError.code) === '9009' || /Python was not found/i.test(detail)) {
-        throw new Error('Python 3.10+ is required for Whisper. Create the server .venv and install requirements; see the Windows setup instructions in server/README.md.');
-      }
-      if (/ffmpeg/i.test(detail)) {
-        throw new Error('FFmpeg is required for Whisper and must be available on PATH.');
-      }
-      throw error;
-    }
-    const result = JSON.parse(stdout) as { text?: string };
-    if (!result.text?.trim()) {
-      throw new Error('Local Whisper returned an empty transcript');
-    }
-    return result.text.trim();
+    throw error;
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
@@ -145,11 +301,16 @@ export async function transcribeAudioFromUrl(url: string) {
   return transcribeAudioBuffer(buffer);
 }
 
-export async function transcribeAudioBuffer(buffer: Buffer, extension = 'webm') {
+export async function transcribeAudioBuffer(
+  buffer: Buffer,
+  extension = 'webm',
+  preferredLanguage: 'auto' | 'rw' = 'auto',
+  vocabulary: string[] = [],
+) {
   if (!buffer.length || buffer.length > MAX_AUDIO_BYTES) {
     throw new Error('Audio file must be between 1 byte and 25 MB');
   }
-  const transcription = transcriptionQueue.then(() => runLocalTranscription(buffer, extension));
+  const transcription = transcriptionQueue.then(() => runLocalTranscription(buffer, extension, preferredLanguage, vocabulary));
   transcriptionQueue = transcription.then(() => undefined, () => undefined);
   return transcription;
 }

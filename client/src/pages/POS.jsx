@@ -1,30 +1,68 @@
 import { useEffect, useRef, useState } from 'react';
 import { ShoppingCart, Mic, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useApp } from '../context/useApp';
 import { apiUrl } from '../api';
+import { discreteProductUnits, formatUnitAmount, formatUnitLabel } from '../data/productUnits';
 
 export default function POS() {
   const { products, recordSale, theme, refreshShopData } = useApp();
-  const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || 1);
+  const location = useLocation();
+  const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [soldBy, setSoldBy] = useState('owner');
   const [successMsg, setSuccessMsg] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
 
   // Voice & WhatsApp simulator state
-  const [whatsappText, setWhatsappText] = useState('Gurisha umuceri 2');
+  const [whatsappText, setWhatsappText] = useState('Gurisha umuceri ibiro bibiri');
   const [whatsappLog, setWhatsappLog] = useState([
-    { sender: 'shop', text: 'Muraho! Send a text or voice command (e.g. STOCK, Gurisha umuceri 2, Mfite isukari 5)' },
+    { sender: 'shop', text: 'Muraho! Vuga cyangwa wandike itegeko ryo kugurisha, kongera stock, gukora igicuruzwa, cyangwa guhindura ibiciro.' },
   ]);
   const [transcribing, setTranscribing] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorderRef = useRef(null);
+  const voiceAssistantRef = useRef(null);
+  const selectedProduct = products.find((product) => String(product.id) === String(selectedProductId));
+  const quantityIsDiscrete = selectedProduct ? discreteProductUnits.has(selectedProduct.unit) : false;
+  const saleTotal = Number(quantity) * Number(selectedProduct?.selling_price || 0);
+
+  useEffect(() => {
+    if (location.hash !== '#voice-assistant') return;
+    const frameId = window.requestAnimationFrame(() => {
+      voiceAssistantRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [location.hash]);
+
+  useEffect(() => {
+    if (!products.length) {
+      setSelectedProductId('');
+      return;
+    }
+    setSelectedProductId((current) => (
+      products.some((product) => String(product.id) === String(current))
+        ? String(current)
+        : String(products[0].id)
+    ));
+  }, [products]);
 
   const handleCheckout = async (e) => {
     e.preventDefault();
-    const recorded = await recordSale(selectedProductId, Number(quantity), soldBy);
+    const product = products.find((item) => String(item.id) === String(selectedProductId));
+    if (!product) {
+      setCheckoutError('Select a product before completing the sale.');
+      return;
+    }
+    const saleQuantity = Number(quantity);
+    if (!Number.isFinite(saleQuantity) || saleQuantity <= 0) {
+      setCheckoutError('Enter a quantity greater than zero.');
+      return;
+    }
+    setCheckoutError('');
+    const recorded = await recordSale(product.id, saleQuantity, soldBy);
     if (!recorded) return;
-    const prod = products.find((p) => p.id === Number(selectedProductId));
-    setSuccessMsg(`Successfully sold ${quantity} ${prod?.unit || 'unit'} of ${prod?.name || 'product'}! Profit added.`);
+    setSuccessMsg(`Successfully sold ${formatUnitAmount(saleQuantity, product.unit || 'piece')} of ${product.name || 'product'}! Profit added.`);
     setTimeout(() => setSuccessMsg(''), 4000);
   };
 
@@ -46,6 +84,11 @@ export default function POS() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.message || 'Command failed.');
       setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
+      if (['SELL', 'ADD_STOCK', 'CREATE_PRODUCT', 'UPDATE_PRICES'].includes(data.intent)) {
+        await refreshShopData().catch((refreshError) => {
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: refreshError.message || 'Could not refresh shop data.' }]);
+        });
+      }
     } catch (error) {
       setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || 'Could not process command.' }]);
     }
@@ -82,6 +125,7 @@ export default function POS() {
         try {
           const form = new FormData();
           form.append('audio', audio, 'recording.webm');
+          form.append('language', 'rw');
           const transcriptResponse = await fetch(apiUrl('/api/voice/transcribe'), {
             method: 'POST',
             credentials: 'include',
@@ -96,7 +140,7 @@ export default function POS() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ text: transcriptData.transcript }),
+            body: JSON.stringify({ text: transcriptData.transcript, mode: 'sell' }),
           });
           const commandData = await commandResponse.json();
           if (!commandResponse.ok || !commandData.ok) throw new Error(commandData.message || 'Voice command failed.');
@@ -125,7 +169,7 @@ export default function POS() {
     <div className="max-w-7xl mx-auto space-y-8">
       <div>
         <h2 className={`text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>POS & AI Voice Console</h2>
-        <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Record manual sales, test Kinyarwanda voice transcription, and simulate WhatsApp webhook commands.</p>
+        <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Record sales or use Kinyarwanda voice and text commands to manage sales, stock, products, and prices.</p>
       </div>
 
       {successMsg && (
@@ -154,25 +198,32 @@ export default function POS() {
               <select
                 value={selectedProductId}
                 onChange={(e) => setSelectedProductId(e.target.value)}
+                required
                 className={`w-full rounded-xl px-4 py-3 text-sm border focus:outline-none focus:border-[#08D9C0] ${
                   theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                 }`}
               >
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} — RWF {p.selling_price.toLocaleString()} ({p.quantity} {p.unit} left)
-                  </option>
-                ))}
+                {products.length > 0 ? (
+                  products.map((p) => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.name} — RWF {Number(p.selling_price).toLocaleString()} / {formatUnitLabel(p.unit)} · {formatUnitAmount(p.quantity, p.unit)} in stock
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No products available</option>
+                )}
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Quantity</label>
+                <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>
+                  Quantity to sell {selectedProduct ? `(${formatUnitLabel(selectedProduct.unit)})` : ''}
+                </label>
                 <input
                   type="number"
-                  step="0.1"
-                  min="0.1"
+                  step={quantityIsDiscrete ? '1' : '0.01'}
+                  min={quantityIsDiscrete ? '1' : '0.01'}
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                   className={`w-full rounded-xl px-4 py-3 text-sm border focus:outline-none focus:border-[#08D9C0] ${
@@ -180,6 +231,11 @@ export default function POS() {
                   }`}
                   required
                 />
+                {selectedProduct && (
+                  <p className={`mt-1.5 text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {formatUnitAmount(selectedProduct.quantity, selectedProduct.unit)} available · RWF {Number(selectedProduct.selling_price).toLocaleString()} per {formatUnitLabel(selectedProduct.unit)}
+                  </p>
+                )}
               </div>
               <div>
                 <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Sold By</label>
@@ -198,15 +254,23 @@ export default function POS() {
 
             <button
               type="submit"
-              className="w-full py-4 rounded-xl bg-gradient-to-r from-[#087E73] to-[#08D9C0] text-black font-extrabold text-base hover:opacity-95 transition shadow-xl shadow-[#08D9C0]/20 mt-4"
+              disabled={!selectedProduct || Number(selectedProduct.quantity) <= 0}
+              className="w-full py-4 rounded-xl bg-gradient-to-r from-[#087E73] to-[#08D9C0] text-black font-extrabold text-base hover:opacity-95 transition shadow-xl shadow-[#08D9C0]/20 mt-4 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Complete Sale & Calculate Profit
+              {selectedProduct && Number(selectedProduct.quantity) > 0
+                ? `Complete sale · RWF ${Number.isFinite(saleTotal) ? saleTotal.toLocaleString() : '0'}`
+                : 'No stock available'}
             </button>
+            {checkoutError && <p className="text-sm text-red-500" role="alert">{checkoutError}</p>}
           </form>
         </div>
 
         {/* WhatsApp & Voice Simulator */}
-        <div className={`border rounded-3xl p-6 flex flex-col justify-between shadow-sm ${theme === 'dark' ? 'bg-[#101516] border-[#202829]' : 'bg-white border-slate-200'}`}>
+        <div
+          id="voice-assistant"
+          ref={voiceAssistantRef}
+          className={`border rounded-3xl p-6 flex flex-col justify-between shadow-sm ${theme === 'dark' ? 'bg-[#101516] border-[#202829]' : 'bg-white border-slate-200'}`}
+        >
           <div>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -215,7 +279,7 @@ export default function POS() {
                 </div>
                 <div>
                   <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>WhatsApp & Voice Bot</h3>
-                  <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Simulate Kinyarwanda webhook messages</p>
+                  <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Speak or type; successful commands update your shop</p>
                 </div>
               </div>
               <button
@@ -239,6 +303,14 @@ export default function POS() {
                 </div>
               ))}
             </div>
+            <div className={`mb-4 rounded-xl border p-3 text-xs leading-relaxed ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+              <p className={`mb-1 font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Vuga mu buryo bworoshye (Examples)</p>
+              <p><strong>“Gurisha umuceri ibiro 2”</strong> · <strong>“Ongeraho isukari kg 5”</strong></p>
+              <p><strong>“Kora igicuruzwa gishya ibirayi, kg, stock 10, kugura 500, kugurisha 700”</strong></p>
+              <p><strong>“Hindura igiciro cyo kugurisha umuceri 1800”</strong> · <strong>“Hindura igiciro cyo kugura umuceri 1500”</strong></p>
+              <p><strong>“Reba ububiko”</strong> · <strong>“Raporo y’uyu munsi”</strong></p>
+              <p className="mt-1">Mu kugurisha ukoresheje mikoro, izina n’umubare birahagije. Mu gukora igicuruzwa vuga stock, igiciro cyo kugura n’icyo kugurisha. Vuga gahoro ahantu hatuje.</p>
+            </div>
           </div>
 
           <form onSubmit={handleWhatsAppSend} className="flex gap-2">
@@ -246,7 +318,7 @@ export default function POS() {
               type="text"
               value={whatsappText}
               onChange={(e) => setWhatsappText(e.target.value)}
-              placeholder="Type message (e.g. STOCK, Gurisha umuceri 2)..."
+              placeholder="Andika itegeko, urugero: Hindura igiciro cyo kugurisha umuceri 1800..."
               className={`flex-1 rounded-xl px-4 py-3 text-sm border focus:outline-none focus:border-[#08D9C0] ${
                 theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-white placeholder-[#747E80]' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
               }`}

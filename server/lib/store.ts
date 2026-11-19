@@ -1,3 +1,5 @@
+import type { ProductUnit } from '@/lib/product-units';
+
 export type Plan = 'free' | 'daily' | 'monthly';
 
 export type Shop = {
@@ -18,7 +20,7 @@ export type Product = {
   buying_price: number;
   selling_price: number;
   quantity: number;
-  unit: 'piece' | 'kg' | 'loaf' | 'slice' | 'cup';
+  unit: ProductUnit;
   parent_id: number | null;
   low_stock_threshold: number;
   village?: string;

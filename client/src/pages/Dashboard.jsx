@@ -4,15 +4,11 @@ import SalesLineChart from '../components/charts/SalesLineChart';
 import StockDonutChart from '../components/charts/StockDonutChart';
 import RecentActivities from '../components/dashboard/RecentActivities';
 import QuickActions from '../components/dashboard/QuickActions';
-import VoiceAssistantPanel from '../components/dashboard/VoiceAssistantPanel';
 export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fadeIn">
       <WelcomeHeader />
       <StatisticsSection />
-
-      {/* Embedded Voice Assistant in Dashboard Area */}
-      <VoiceAssistantPanel />
 
       {/* Chart Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

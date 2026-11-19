@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   const [{ data: products = [] }, { data: sales = [] }] = await Promise.all([
     supabase.from('products').select('*').eq('shop_id', shop.id).order('name'),
-    supabase.from('sales').select('*, products(name)').eq('shop_id', shop.id).order('created_at', { ascending: false }),
+    supabase.from('sales').select('*, products(name, unit)').eq('shop_id', shop.id).order('created_at', { ascending: false }),
   ]);
   const mappedSales = (sales as any[]).map((sale) => ({
     ...sale,
@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
     selling_price_at_time: Number(sale.selling_price_at_time),
     profit: Number(sale.profit),
     product_name: sale.products?.name ?? 'Product',
+    product_unit: sale.products?.unit ?? null,
   }));
   const mappedProducts = (products as any[]).map((product) => ({
     ...product,

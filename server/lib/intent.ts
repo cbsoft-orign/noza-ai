@@ -1,4 +1,6 @@
 import { addSaleEntry, addProduct, createShop, getProductMatches, getProductsByShop, getShopByPhone, isFreePlanExceeded, normalizeProductName, updateProductQuantity } from '@/lib/store';
+import { formatUnitAmount, formatUnitLabel, isDiscreteProductUnit, suggestProductUnit } from '@/lib/product-units';
+import type { ProductUnit } from '@/lib/product-units';
 
 export type IntentType = 'ADD' | 'SELL' | 'STOCK' | 'REPORT' | 'UNKNOWN';
 
@@ -44,14 +46,151 @@ function findClosestProduct(shopId: string, query: string) {
   return best?.score && best.score >= 0.45 ? best.product : null;
 }
 
+const quantityWords: Record<string, number> = {
+  rimwe: 1,
+  imwe: 1,
+  kimwe: 1,
+  umwe: 1,
+  kabiri: 2,
+  bibiri: 2,
+  ebyiri: 2,
+  babiri: 2,
+  abiri: 2,
+  ibiri: 2,
+  gatatu: 3,
+  bitatu: 3,
+  eshatu: 3,
+  batatu: 3,
+  kane: 4,
+  bine: 4,
+  enye: 4,
+  bane: 4,
+  gatanu: 5,
+  bitanu: 5,
+  eshanu: 5,
+  batanu: 5,
+  gatandatu: 6,
+  bitandatu: 6,
+  esheshatu: 6,
+  batandatu: 6,
+  karindwi: 7,
+  birindwi: 7,
+  barindwi: 7,
+  umunani: 8,
+  icyenda: 9,
+  icumi: 10,
+};
+
+const quantityWordPattern = Object.keys(quantityWords)
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+export const spokenUnitAliases: Record<string, ProductUnit> = {
+  kg: 'kg',
+  kilo: 'kg',
+  kilos: 'kg',
+  kilogramu: 'kg',
+  ibiro: 'kg',
+  g: 'g',
+  gram: 'g',
+  grams: 'g',
+  garama: 'g',
+  l: 'l',
+  liter: 'l',
+  liters: 'l',
+  litre: 'l',
+  litres: 'l',
+  litiro: 'l',
+  ml: 'ml',
+  milliliter: 'ml',
+  milliliters: 'ml',
+  millilitre: 'ml',
+  millilitres: 'ml',
+  piece: 'piece',
+  pieces: 'piece',
+  unit: 'piece',
+  units: 'piece',
+  igice: 'piece',
+  ibice: 'piece',
+  pack: 'pack',
+  packs: 'pack',
+  packet: 'pack',
+  packets: 'pack',
+  ipaki: 'pack',
+  bottle: 'bottle',
+  bottles: 'bottle',
+  icupa: 'bottle',
+  amacupa: 'bottle',
+  bag: 'bag',
+  bags: 'bag',
+  bunch: 'bunch',
+  bunches: 'bunch',
+  crate: 'crate',
+  crates: 'crate',
+  tray: 'tray',
+  trays: 'tray',
+  loaf: 'loaf',
+  loaves: 'loaf',
+  slices: 'slice',
+  slice: 'slice',
+  cup: 'cup',
+  cups: 'cup',
+  dozen: 'dozen',
+  dozens: 'dozen',
+  box: 'box',
+  boxes: 'box',
+  pair: 'pair',
+  pairs: 'pair',
+};
+export const spokenUnitPattern = Object.keys(spokenUnitAliases)
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+const quantityPattern = new RegExp(
+  `\\b(\\d+(?:\\.\\d+)?|${quantityWordPattern})(?:\\s*(${spokenUnitPattern}))?[.!?]?\\s*$`,
+  'i',
+);
+const trailingUnitPattern = new RegExp(`\\s+(?:${spokenUnitPattern})\\s*$`, 'i');
+const commandPrefixPattern = /^(?:(?:ndashaka\s+)?(?:kugurisha|ndagurisha|tugurisha|mugurisha|nagurishije|gurishije|yagurishije|hagurishije|gurisha|gura|sell|sold)|(?:nongeraho|nongeyeho|twongeyeho|ongeraho|ongeramo|ongera|shyiraho|shyiramo|mfite|naguze|nakiriye|twakiriye|twaguze|add))\b\s*/i;
+
+export function parseQuantityValue(value: string): number | undefined {
+  const normalized = value.trim().toLowerCase();
+  const numeric = Number(normalized.replace(/,/g, ''));
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  return quantityWords[normalized];
+}
+
+export function normalizeSpokenUnit(value: string): ProductUnit | undefined {
+  return spokenUnitAliases[value.trim().toLowerCase()];
+}
+
+export function parseVoiceCommand(text: string) {
+  const value = text.trim();
+  const match = quantityPattern.exec(value);
+  if (!match) return null;
+
+  const quantityText = match[1].toLowerCase();
+  const quantity = parseQuantityValue(quantityText);
+  if (quantity === undefined || quantity <= 0) return null;
+
+  const beforeQuantity = value.slice(0, match.index);
+  const prefixUnit = beforeQuantity.match(new RegExp(`\\b(${spokenUnitPattern})\\s*$`, 'i'))?.[1]?.toLowerCase();
+  const spokenUnit = match[2]?.toLowerCase() ?? prefixUnit;
+  const productName = beforeQuantity
+    .replace(trailingUnitPattern, '')
+    .replace(commandPrefixPattern, '')
+    .trim();
+  if (!productName) return null;
+
+  return { productName, quantity, unit: spokenUnit ? normalizeSpokenUnit(spokenUnit) : undefined };
+}
+
 export function detectIntent(text: string) {
   const value = text.trim().toLowerCase();
   if (!value) return { intent: 'UNKNOWN' as const, text };
 
-  if (/(stock\?|ibikuruzwa|stock|ibibanza|imbere)/.test(value)) return { intent: 'STOCK', text };
+  if (/(stock\?|stock|ibicuruzwa|ibikuruzwa|ububiko|reba\s+(?:stock|ububiko)|mfite\s+iki)/i.test(value)) return { intent: 'STOCK', text };
   if (/(report|raporo|uyu munsi|ibimenyetso|lundi|byumweru)/.test(value)) return { intent: 'REPORT', text };
-  if (/(gurisha|gura|kurisha|hagurishije|yagurishije|sale|sell|sold)/.test(value)) return { intent: 'SELL', text };
-  if (/(mfite|ongeraho|add|kongeraho|new product|kugura|shyiraho)/.test(value)) return { intent: 'ADD', text };
+  if (/(ndashaka\s+kugurisha|kugurisha|ndagurisha|tugurisha|mugurisha|nagurishije|gurishije|yagurishije|hagurishije|gurisha|gura|kurisha|sale|sell|sold)/.test(value)) return { intent: 'SELL', text };
+  if (/(nakiriye|twakiriye|naguze|twaguze|ongeraho|ongeramo|ongera|nongeraho|nongeyeho|twongeyeho|add|kongeraho|new product|shyiraho|shyiramo)/.test(value)) return { intent: 'ADD', text };
   if (/\d+x\d+|\d+\s*x\s*\d+/.test(value)) return { intent: 'SELL', text };
   return { intent: 'UNKNOWN', text };
 }
@@ -70,27 +209,15 @@ export function parseSellRequest(text: string, shopId: string) {
     return { intent: 'SELL' as const, text: value, items };
   }
 
-  const productMatch = /([a-zA-Z\s]+?)\s+(?:slice|cup|loaf|kg|piece)?\s*(\d+(?:\.\d+)?)$/i.exec(value);
-  if (productMatch) {
-    const productName = productMatch[1].trim();
-    const quantity = Number(productMatch[2]);
-    const product = findClosestProduct(shopId, productName) ?? getProductsByShop(shopId)[0];
+  const command = parseVoiceCommand(value);
+  if (command) {
+    const product = findClosestProduct(shopId, command.productName);
     if (!product) return { intent: 'SELL' as const, text: value, items: [] };
     return {
       intent: 'SELL' as const,
       text: value,
-      items: [{ productId: product.id, quantity, productName: product.name }],
+      items: [{ productId: product.id, quantity: command.quantity, productName: product.name }],
     };
-  }
-
-  const defaultItems = value.split(/\s+/).filter(Boolean);
-  if (defaultItems.length >= 2) {
-    const productName = defaultItems.slice(0, -1).join(' ');
-    const quantity = Number(defaultItems[defaultItems.length - 1]);
-    const product = findClosestProduct(shopId, productName) ?? getProductsByShop(shopId)[0];
-    if (product) {
-      return { intent: 'SELL' as const, text: value, items: [{ productId: product.id, quantity, productName: product.name }] };
-    }
   }
 
   return { intent: 'SELL' as const, text: value, items: [] };
@@ -98,22 +225,35 @@ export function parseSellRequest(text: string, shopId: string) {
 
 export function parseAddRequest(text: string, shopId: string) {
   const normalized = text.trim();
-  const pairs = normalized.matchAll(/([a-zA-Z\s]+?)\s+(\d+(?:\.\d+)?)\s*/gi);
-  const items: Array<{ name: string; quantity: number }> = [];
-
-  for (const match of pairs) {
-    const name = match[1].trim();
-    const quantity = Number(match[2]);
-    if (name && !Number.isNaN(quantity)) items.push({ name, quantity });
+  const withoutPrefix = normalized.replace(commandPrefixPattern, '');
+  const pairs = Array.from(withoutPrefix.matchAll(/([a-zA-Z\s]+?)\s+(\d+(?:\.\d+)?)\s*/gi));
+  if (pairs.length >= 2) {
+    return {
+      intent: 'ADD' as const,
+      text: normalized,
+      items: pairs.map((match) => ({ name: match[1].trim(), quantity: Number(match[2]) })),
+    };
   }
 
-  if (items.length >= 2) {
-    return { intent: 'ADD' as const, text: normalized, items };
+  const command = parseVoiceCommand(normalized);
+  if (command) {
+    return {
+      intent: 'ADD' as const,
+      text: normalized,
+      items: [{ name: command.productName, quantity: command.quantity }],
+    };
   }
 
-  const productName = normalized.replace(/\d+(?:\.\d+)?/g, '').trim();
-  const quantity = Number((normalized.match(/\d+(?:\.\d+)?/) ?? ['0'])[0]);
-  return { intent: 'ADD' as const, text: normalized, items: [{ name: productName || 'Product', quantity }] };
+  if (pairs.length === 1) {
+    const [name, quantity] = [pairs[0][1].trim(), Number(pairs[0][2])];
+    return {
+      intent: 'ADD' as const,
+      text: normalized,
+      items: [{ name, quantity }],
+    };
+  }
+
+  return { intent: 'ADD' as const, text: normalized, items: [] };
 }
 
 export function parseStockRequest(text: string, shopId: string) {
@@ -122,7 +262,7 @@ export function parseStockRequest(text: string, shopId: string) {
 
   return products
     .slice(0, 10)
-    .map((product, index) => `${index + 1}. ${product.name} - ${product.quantity} left - ${money(product.selling_price)}`)
+    .map((product, index) => `${index + 1}. ${product.name} - ${formatUnitAmount(product.quantity, product.unit)} left - ${money(product.selling_price)} per ${formatUnitLabel(product.unit)}`)
     .join('\n');
 }
 
@@ -135,8 +275,12 @@ export function applySale(shopId: string, items: Array<{ productId?: number; qua
     const product = getProductsByShop(shopId).find((candidate) => candidate.id === productId);
     if (!product) continue;
 
-    const unitDelta = product.unit === 'slice' ? 0.1 : product.unit === 'cup' ? 0.1 : product.unit === 'loaf' ? 1 : 1;
-    const finalQuantity = item.quantity * unitDelta;
+    const displayName = item.productName ?? item.name ?? product.name;
+    if (isDiscreteProductUnit(product.unit) && !Number.isInteger(item.quantity)) {
+      productSummaries.push(`${displayName} must be sold in whole ${formatUnitLabel(product.unit)} quantities.`);
+      continue;
+    }
+    const finalQuantity = item.quantity;
     const profit = finalQuantity * (product.selling_price - product.buying_price);
     totalProfit += profit;
     updateProductQuantity(shopId, product.id, -finalQuantity);
@@ -152,8 +296,7 @@ export function applySale(shopId: string, items: Array<{ productId?: number; qua
       sold_by: soldBy,
     });
 
-    const displayName = item.productName ?? item.name ?? product.name;
-    productSummaries.push(`${displayName} ${finalQuantity}`);
+    productSummaries.push(`${displayName}: ${formatUnitAmount(finalQuantity, product.unit)}`);
   }
 
   return {
@@ -177,13 +320,13 @@ export function applyAddProduct(shopId: string, name: string, quantity: number) 
     buying_price: 0,
     selling_price: 0,
     quantity,
-    unit: 'kg' as const,
+    unit: suggestProductUnit(name),
     parent_id: null,
     low_stock_threshold: 2,
   };
 
   addProduct(product);
-  return { blocked: false, product, message: `${name} yongewe.` };
+  return { blocked: false, product, message: `${formatUnitAmount(quantity, product.unit)} bya ${name} byongewe.` };
 }
 
 export function resolveShopPhone(phoneLike: string) {
@@ -224,5 +367,5 @@ export function parseMessageText(shopId: string, message: string) {
     return `Uyu munsi: ${money(0)} - Inyungu ${money(0)}`;
   }
 
-  return 'Ntago twasobanukiwe. Andika: STOCK, Gurisha umuceri 2, cyangwa Mfite umuceri 10';
+  return 'Ntago twasobanukiwe. Andika: STOCK, Gurisha umuceri ibiro bibiri, cyangwa Mfite umuceri 10';
 }

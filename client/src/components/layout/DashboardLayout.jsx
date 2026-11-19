@@ -15,9 +15,9 @@ export default function DashboardLayout() {
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#07090A] text-white' : 'bg-slate-50 text-slate-900'} flex transition-colors`}>
       <Sidebar navigationItems={navigationItems} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 md:ml-[200px]">
         <TopNavbar onToggleMobileSidebar={() => setMobileOpen(!mobileOpen)} />
-        <main className="flex-1 md:ml-[200px] p-4 md:p-8 overflow-y-auto">
+        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
           <Outlet />
         </main>
       </div>

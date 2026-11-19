@@ -11,6 +11,7 @@ export async function POST(request: Request) {
       name: item.name,
       estimated_price: item.avg_price,
       confidence: 0.91,
+      unit: item.unit,
     }));
 
     return NextResponse.json({ ok: true, items });

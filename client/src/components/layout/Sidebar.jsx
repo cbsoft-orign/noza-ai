@@ -39,9 +39,12 @@ export default function Sidebar({ navigationItems, mobileOpen, onCloseMobile }) 
           </button>
         )}
 
-        {/* Decorative background turquoise glow & waves */}
-        <div className="absolute -top-20 -right-20 w-40 h-40 bg-[#08D9C0]/10 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute -bottom-20 -right-20 w-48 h-48 bg-[#087E73]/15 rounded-full blur-3xl pointer-events-none" />
+        {theme === 'dark' && (
+          <>
+            <div className="absolute -top-20 -right-20 w-40 h-40 bg-[#08D9C0]/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-20 -right-20 w-48 h-48 bg-[#087E73]/15 rounded-full blur-3xl pointer-events-none" />
+          </>
+        )}
 
         <div className="relative z-10 flex flex-col h-full">
           <Logo />
@@ -74,7 +77,7 @@ export default function Sidebar({ navigationItems, mobileOpen, onCloseMobile }) 
 
           {/* Bottom Section: Voice Assistant & User Profile */}
           <div className={`p-3 border-t ${theme === 'dark' ? 'border-[#202829] bg-[#07090A]/95' : 'border-slate-200 bg-slate-50/95'} backdrop-blur-md relative z-10 space-y-3`}>
-            <VoiceAssistant />
+            <VoiceAssistant onNavigate={onCloseMobile} />
             <UserProfile />
           </div>
         </div>

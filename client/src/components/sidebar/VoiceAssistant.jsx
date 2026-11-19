@@ -2,23 +2,25 @@ import { ChevronRight } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
 
-export default function VoiceAssistant() {
+export default function VoiceAssistant({ onNavigate }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme } = useApp();
 
   const handleClick = () => {
-    if (location.pathname !== '/dashboard') {
-      navigate('/dashboard');
+    onNavigate?.();
+    if (location.pathname === '/pos' && location.hash === '#voice-assistant') {
+      document.getElementById('voice-assistant')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
-      window.scrollTo({ top: 400, behavior: 'smooth' });
+      navigate('/pos#voice-assistant');
     }
   };
 
   return (
-    <div
+    <button
+      type="button"
       onClick={handleClick}
-      className={`p-3 rounded-2xl border transition cursor-pointer group shadow-sm ${
+      className={`w-full p-3 rounded-2xl border transition text-left group shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087E73] ${
         theme === 'dark'
           ? 'bg-[#101516] border-[#08D9C0]/40 hover:border-[#08D9C0] hover:bg-[#142020] text-white'
           : 'bg-white border-[#087E73]/30 hover:border-[#087E73] hover:bg-slate-50 text-slate-900'
@@ -33,10 +35,10 @@ export default function VoiceAssistant() {
         </div>
         <div>
           <p className="text-xs font-bold tracking-wide">Voice Assistant</p>
-          <p className={`text-[10px] ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>In Dashboard Area</p>
+          <p className={`text-[10px] ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Open voice sales assistant</p>
         </div>
       </div>
       <ChevronRight className="w-4 h-4 text-[#08D9C0] group-hover:translate-x-0.5 transition" />
-    </div>
+    </button>
   );
 }

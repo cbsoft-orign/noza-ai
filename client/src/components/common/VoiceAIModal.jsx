@@ -4,7 +4,8 @@ import { useApp } from '../../context/useApp';
 import { apiUrl } from '../../api';
 
 export default function VoiceAIModal({ isOpen, onClose }) {
-  const { shop } = useApp();
+  const { shop, theme } = useApp();
+  const dark = theme === 'dark';
   const [listening, setListening] = useState(isOpen);
   const [transcript, setTranscript] = useState('Ndateka kuvuga (Speak in Kinyarwanda or English)...');
   const [aiResponse, setAiResponse] = useState('Muraho! Mfite gute? (How can I help your stock today?)');
@@ -40,25 +41,26 @@ export default function VoiceAIModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="bg-[#101516] border border-[#08D9C0]/50 rounded-3xl p-8 w-full max-w-lg shadow-[0_0_50px_rgba(8,217,192,0.25)] flex flex-col items-center text-center relative">
+    <div className={`fixed inset-0 flex items-center justify-center z-50 p-4 animate-fadeIn ${dark ? 'bg-black/85 backdrop-blur-md' : 'bg-slate-900/30 backdrop-blur-sm'}`}>
+      <div className={`border rounded-2xl p-6 sm:p-8 w-full max-w-lg flex flex-col items-center text-center relative ${dark ? 'bg-[#101516] border-[#08D9C0]/50 shadow-[0_0_50px_rgba(8,217,192,0.25)]' : 'bg-white border-slate-200 shadow-xl'}`}>
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-full bg-[#07090A] border border-[#202829] text-[#B4BABB] hover:text-white transition"
+          aria-label="Close voice assistant"
+          className={`absolute top-4 right-4 p-2 rounded-lg transition ${dark ? 'bg-[#07090A] border border-[#202829] text-slate-400 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
         >
           <X className="w-5 h-5" />
         </button>
 
-        <h3 className="text-xl font-black text-white mb-2">NOZA Kinyarwanda Voice Assistant</h3>
-        <p className="text-xs text-[#B4BABB] mb-8">Speak naturally to manage your store stock and sales</p>
+        <h3 className={`text-xl font-semibold mb-2 ${dark ? 'text-white' : 'text-slate-900'}`}>NOZA Kinyarwanda Voice Assistant</h3>
+        <p className={`text-sm mb-6 ${dark ? 'text-slate-300' : 'text-slate-600'}`}>Speak naturally to manage your store stock and sales</p>
 
         {/* Central Glowing Orb & Gradient Waves */}
         <div className="relative w-48 h-48 flex items-center justify-center my-6">
           <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#087E73] to-[#08D9C0] opacity-30 animate-ping" />
           <div className="absolute inset-2 rounded-full bg-gradient-to-tr from-[#087E73] to-[#08D9C0] opacity-40 blur-xl animate-pulse" />
           
-          <div className="relative w-36 h-36 rounded-full bg-[#050909] border-2 border-[#08D9C0] flex items-center justify-center shadow-[0_0_30px_rgba(8,217,192,0.6)]">
-            <Mic className={`w-12 h-12 text-[#08D9C0] ${listening ? 'animate-bounce' : ''}`} />
+          <div className={`relative w-36 h-36 rounded-full border-2 flex items-center justify-center ${dark ? 'bg-[#050909] border-[#08D9C0] shadow-[0_0_30px_rgba(8,217,192,0.6)]' : 'bg-teal-50 border-teal-200'}`}>
+            <Mic className={`w-12 h-12 ${dark ? 'text-[#08D9C0]' : 'text-[#087E73]'} ${listening ? 'animate-bounce' : ''}`} />
           </div>
         </div>
 
@@ -73,19 +75,19 @@ export default function VoiceAIModal({ isOpen, onClose }) {
           ))}
         </div>
 
-        <div className="w-full bg-[#07090A] border border-[#202829] rounded-2xl p-4 my-4 text-left space-y-2">
-          <p className="text-[11px] text-[#747E80] uppercase tracking-wider">Detected Transcript:</p>
-          <p className="text-sm font-semibold text-white italic">"{transcript}"</p>
-          <hr className="border-[#202829]" />
-          <p className="text-[11px] text-[#08D9C0] uppercase tracking-wider">AI Response:</p>
-          <p className="text-sm font-bold text-[#08D9C0]">{aiResponse}</p>
+        <div className={`w-full border rounded-xl p-4 my-4 text-left space-y-2 ${dark ? 'bg-[#07090A] border-[#202829]' : 'bg-slate-50 border-slate-200'}`}>
+          <p className={`text-[11px] uppercase tracking-wider ${dark ? 'text-slate-400' : 'text-slate-500'}`}>Detected Transcript:</p>
+          <p className={`text-sm font-semibold italic ${dark ? 'text-white' : 'text-slate-900'}`}>"{transcript}"</p>
+          <hr className={dark ? 'border-[#202829]' : 'border-slate-200'} />
+          <p className={`text-[11px] uppercase tracking-wider ${dark ? 'text-[#08D9C0]' : 'text-[#087E73]'}`}>AI Response:</p>
+          <p className={`text-sm font-semibold ${dark ? 'text-[#08D9C0]' : 'text-[#087E73]'}`}>{aiResponse}</p>
         </div>
 
         <div className="flex items-center gap-4 mt-4">
           <button
             onClick={() => setListening(!listening)}
-            className={`px-6 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 transition ${
-              listening ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400' : 'bg-[#08D9C0] text-black shadow-lg shadow-[#08D9C0]/30'
+            className={`px-5 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition ${
+              listening ? 'bg-amber-500/10 border border-amber-500/40 text-amber-700' : dark ? 'bg-[#08D9C0] text-black' : 'bg-[#087E73] text-white'
             }`}
           >
             {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -93,7 +95,7 @@ export default function VoiceAIModal({ isOpen, onClose }) {
           </button>
           <button
             onClick={onClose}
-            className="px-6 py-3 rounded-2xl bg-[#07090A] border border-[#202829] text-white font-semibold text-sm hover:border-[#08D9C0] transition"
+            className={`px-5 py-2.5 rounded-lg border font-medium text-sm transition ${dark ? 'bg-[#07090A] border-[#202829] text-white hover:border-[#08D9C0]' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}
           >
             Done
           </button>

@@ -12,7 +12,7 @@ export default function VoiceAssistantPanel() {
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const [chatLog, setChatLog] = useState([
-    { sender: 'ai', text: 'Muraho! Ndi Voice Assistant yawe. Vuga cyangwa andika (e.g. Gurisha umuceri 2, STOCK).' },
+    { sender: 'ai', text: 'Muraho! Ndi Voice Assistant yawe. Vuga itegeko rimwe cyangwa wandike mu gasanduku kari hasi.' },
   ]);
 
   const runCommand = async (userText) => {
@@ -86,6 +86,7 @@ export default function VoiceAssistantPanel() {
         setProcessing(true);
         const formData = new FormData();
         formData.append('audio', audio, 'recording.webm');
+        formData.append('language', 'rw');
         try {
           const response = await fetch(apiUrl('/api/voice/transcribe'), {
             method: 'POST',
@@ -157,6 +158,13 @@ export default function VoiceAssistantPanel() {
         ))}
       </div>
 
+      <div className={`mb-3 rounded-xl border p-3 text-xs leading-relaxed ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+        <p className={`mb-1 font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Amabwiriza y’ijwi (Voice tips)</p>
+        <p>Gurisha: <strong>“Gurisha umuceri ibiro bibiri”</strong> · Ongeraho stock: <strong>“Ongeraho isukari eshanu”</strong></p>
+        <p>Reba stock: <strong>“Reba ububiko”</strong> · Raporo: <strong>“Raporo y’uyu munsi”</strong></p>
+        <p className="mt-1">Vuga itegeko rimwe gahoro kandi mu ituze; koresha izina ry’igicuruzwa nk’uko ryanditse muri stock. Niba transcript itari yo, andika itegeko rikwiye mu gasanduku kari hasi.</p>
+      </div>
+
       {/* Chat scroll box */}
       <div className={`h-[150px] overflow-y-auto rounded-xl p-3 space-y-2 mb-3 text-xs border ${theme === 'dark' ? 'bg-[#07090A] border-[#202829]' : 'bg-slate-50 border-slate-200'}`}>
         {chatLog.map((log, idx) => (
@@ -176,7 +184,7 @@ export default function VoiceAssistantPanel() {
           value={inputCommand}
           onChange={(e) => setInputCommand(e.target.value)}
           disabled={processing}
-          placeholder="Type or speak command (e.g. Gurisha umuceri 1)..."
+          placeholder="Type or speak command (e.g. Gurisha umuceri ibiro bibiri)..."
           className={`flex-1 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#08D9C0] border ${
             theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-white placeholder-[#747E80]' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
           }`}

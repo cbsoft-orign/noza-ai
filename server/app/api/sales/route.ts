@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { addSaleEntry, db, getProductById, updateProductQuantity } from '@/lib/store';
+import { isDiscreteProductUnit } from '@/lib/product-units';
 import { supabase } from '@/lib/supabase';
 import { readShopSession } from '@/lib/shop-session';
 import type { NextRequest } from 'next/server';
@@ -12,9 +13,13 @@ export async function GET(request: NextRequest) {
   if (!shopId) return NextResponse.json({ ok: false, message: 'shop_id required' }, { status: 400 });
   if (shopId !== auth.shopId) return NextResponse.json({ ok: false, message: 'Forbidden' }, { status: 403 });
   if (!supabase) return NextResponse.json({ ok: false, message: 'Database not configured' }, { status: 503 });
-  const { data, error } = await supabase.from('sales').select('*, products(name)').eq('shop_id', shopId).order('created_at', { ascending: false });
+  const { data, error } = await supabase.from('sales').select('*, products(name, unit)').eq('shop_id', shopId).order('created_at', { ascending: false });
   if (error) return NextResponse.json({ ok: false, message: error.message }, { status: 500 });
-  const sales = (data ?? []).map((sale: any) => ({ ...sale, product_name: sale.products?.name ?? 'Product' }));
+  const sales = (data ?? []).map((sale: any) => ({
+    ...sale,
+    product_name: sale.products?.name ?? 'Product',
+    product_unit: sale.products?.unit ?? null,
+  }));
   return NextResponse.json({ ok: true, items: sales });
 }
 
@@ -40,6 +45,9 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (productError) return NextResponse.json({ ok: false, message: productError.message }, { status: 500 });
     if (!product) return NextResponse.json({ ok: false, message: 'Product not found' }, { status: 404 });
+    if (isDiscreteProductUnit(product.unit) && !Number.isInteger(quantity)) {
+      return NextResponse.json({ ok: false, message: `${product.unit} quantities must be whole numbers.` }, { status: 400 });
+    }
     if (quantity > Number(product.quantity)) {
       return NextResponse.json({ ok: false, message: 'Insufficient stock' }, { status: 409 });
     }
@@ -61,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      item: { ...sale, product_name: product.name },
+      item: { ...sale, product_name: product.name, product_unit: product.unit },
       product: { ...product, quantity: newQuantity },
     }, { status: 201 });
   } catch (error) {

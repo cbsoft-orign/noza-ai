@@ -19,7 +19,7 @@ create table if not exists products (
   buying_price numeric(12,2) default 0,
   selling_price numeric(12,2) default 0,
   quantity numeric(12,2) default 0,
-  unit text check (unit in ('piece', 'kg', 'loaf', 'slice', 'cup')) default 'kg',
+  unit text check (unit in ('kg', 'g', 'l', 'ml', 'piece', 'pack', 'bottle', 'bag', 'bunch', 'crate', 'tray', 'loaf', 'slice', 'cup', 'dozen', 'box', 'pair')) default 'kg',
   parent_id uuid references products(id),
   low_stock_threshold numeric(12,2) default 0
 );
