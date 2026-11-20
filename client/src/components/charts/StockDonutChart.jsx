@@ -1,17 +1,19 @@
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { PieChart as PieIcon } from 'lucide-react';
 import { useApp } from '../../context/useApp';
+import { getTranslations } from '../../data/translations';
 
 export default function StockDonutChart() {
-  const { theme, products } = useApp();
+  const { theme, products, lang } = useApp();
+  const t = getTranslations(lang);
   const inStock = products.filter((product) => product.quantity > product.low_stock_threshold).length;
   const lowStock = products.filter((product) => product.quantity > 0 && product.quantity <= product.low_stock_threshold).length;
   const outOfStock = products.filter((product) => product.quantity <= 0).length;
   const total = products.length || 1;
   const stockStatusData = [
-    { name: 'In Stock', value: Math.round((inStock / total) * 100), color: '#08d9c0' },
-    { name: 'Low Stock', value: Math.round((lowStock / total) * 100), color: '#f59e0b' },
-    { name: 'Out of Stock', value: Math.round((outOfStock / total) * 100), color: '#ef4444' },
+    { name: t.dashboard.inStock, value: Math.round((inStock / total) * 100), color: '#08d9c0' },
+    { name: t.dashboard.lowStock, value: Math.round((lowStock / total) * 100), color: '#f59e0b' },
+    { name: t.dashboard.outOfStock, value: Math.round((outOfStock / total) * 100), color: '#ef4444' },
   ];
   const inStockPercent = stockStatusData[0].value;
 
@@ -27,8 +29,8 @@ export default function StockDonutChart() {
             <PieIcon className="w-5 h-5" />
           </div>
           <div>
-            <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Stock Status</h3>
-            <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Inventory health ratio</p>
+            <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.dashboard.stockStatus}</h3>
+            <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>{t.dashboard.inventoryHealth}</p>
           </div>
         </div>
       </div>
@@ -48,13 +50,13 @@ export default function StockDonutChart() {
                 borderRadius: '12px',
                 color: theme === 'dark' ? '#fff' : '#0f172a',
               }}
-              formatter={(val) => [`${val}%`, 'Share']}
+              formatter={(val) => [`${val}%`, t.dashboard.share]}
             />
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className={`text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{inStockPercent}%</span>
-          <span className="text-[11px] text-[#08D9C0] font-semibold uppercase tracking-wider">In Stock</span>
+          <span className="text-[11px] text-[#08D9C0] font-semibold uppercase tracking-wider">{t.dashboard.inStock}</span>
         </div>
       </div>
 

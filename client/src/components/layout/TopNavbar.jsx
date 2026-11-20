@@ -2,11 +2,14 @@ import { Search, Sun, Moon, Menu, LogOut } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
+import { getTranslations } from '../../data/translations';
+import LanguageSwitcher from '../common/LanguageSwitcher';
 
 export default function TopNavbar({ onToggleMobileSidebar }) {
   const navigate = useNavigate();
-  const { lang, setLang, theme, toggleTheme, user, products, logout } = useApp();
+  const { lang, theme, toggleTheme, user, products, logout } = useApp();
   const dark = theme === 'dark';
+  const t = getTranslations(lang);
   const [searchText, setSearchText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const normalizedSearch = searchText.trim().toLocaleLowerCase();
@@ -39,7 +42,7 @@ export default function TopNavbar({ onToggleMobileSidebar }) {
       <div className="flex items-center gap-3 flex-1 min-w-0 max-w-[420px]">
         <button
           onClick={onToggleMobileSidebar}
-          aria-label="Open navigation menu"
+          aria-label={t.common.openMenu}
           className={`md:hidden p-2 rounded-md ${dark ? 'text-slate-300 hover:bg-white/5' : 'text-slate-600 hover:bg-slate-100'}`}
         >
           <Menu className="w-5 h-5" />
@@ -61,8 +64,8 @@ export default function TopNavbar({ onToggleMobileSidebar }) {
             onKeyDown={(event) => {
               if (event.key === 'Escape') setSearchOpen(false);
             }}
-            placeholder={lang === 'rw' ? 'Shakisha ibicuruzwa...' : 'Search products...'}
-            aria-label={lang === 'rw' ? 'Shakisha ibicuruzwa' : 'Search products'}
+            placeholder={t.nav.searchPlaceholder}
+            aria-label={t.nav.searchAria}
             aria-expanded={searchOpen && Boolean(normalizedSearch)}
             aria-controls="topbar-product-search-results"
             autoComplete="off"
@@ -97,9 +100,7 @@ export default function TopNavbar({ onToggleMobileSidebar }) {
                 ))
               ) : (
                 <p className={`px-3 py-2 text-sm ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {lang === 'rw'
-                    ? 'Nta bicuruzwa bihuye. Kanda Enter ushakishe mu bubiko.'
-                    : 'No matching products. Press Enter to search inventory.'}
+                  {t.nav.noSearchMatches}
                 </p>
               )}
             </div>
@@ -107,32 +108,26 @@ export default function TopNavbar({ onToggleMobileSidebar }) {
         </form>
       </div>
 
-      <div className="flex items-center gap-1 md:gap-3 shrink-0 ml-3">
+      <div className="flex items-center gap-1.5 md:gap-3 shrink-0 ml-3">
         <button
           onClick={toggleTheme}
-          aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+          aria-label={dark ? t.common.switchToLight : t.common.switchToDark}
           className={`p-2 rounded-md ${dark ? 'text-slate-300 hover:bg-white/5' : 'text-slate-600 hover:bg-slate-100'}`}
-          title="Toggle Dark/Light Mode"
+          title={dark ? t.common.switchToLight : t.common.switchToDark}
         >
           {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
 
-        <button
-          onClick={() => setLang(lang === 'en' ? 'rw' : 'en')}
-          aria-label={lang === 'en' ? 'Switch language to Kinyarwanda' : 'Switch language to English'}
-          className={`px-2 py-2 rounded-md text-xs font-medium ${dark ? 'text-slate-300 hover:bg-white/5' : 'text-slate-600 hover:bg-slate-100'}`}
-        >
-          {lang === 'en' ? 'RW' : 'EN'}
-        </button>
+        <LanguageSwitcher compact />
 
         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${dark ? 'bg-white/10 text-slate-200' : 'bg-slate-100 text-slate-700'}`}>
           {user?.name?.charAt(0)?.toUpperCase()}
         </div>
         <button
           onClick={handleLogout}
-          aria-label="Sign out"
+          aria-label={t.common.signOut}
           className={`p-2 rounded-md ${dark ? 'text-slate-400 hover:bg-white/5 hover:text-red-400' : 'text-slate-500 hover:bg-slate-100 hover:text-red-500'}`}
-          title="Sign out"
+          title={t.common.signOut}
         >
           <LogOut className="w-4 h-4" />
         </button>

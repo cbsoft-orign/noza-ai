@@ -1,16 +1,18 @@
 import { Rocket, Package, ShoppingCart, FileText, Bot } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
+import { getTranslations } from '../../data/translations';
 
 export default function QuickActions() {
   const navigate = useNavigate();
-  const { theme } = useApp();
+  const { theme, lang } = useApp();
+  const t = getTranslations(lang);
 
   const actions = [
-    { label: 'Add Product', icon: Package, path: '/products', color: 'from-[#087E73] to-[#08D9C0]' },
-    { label: 'Record Sale (POS)', icon: ShoppingCart, path: '/pos', color: 'from-[#087E73]/80 to-[#08D9C0]/80' },
-    { label: 'View Reports', icon: FileText, path: '/reports', color: theme === 'dark' ? 'from-[#101516] to-[#0C1112]' : 'from-slate-100 to-slate-200 text-slate-900', border: true },
-    { label: 'Voice & AI Assistant', icon: Bot, path: '/pos', color: 'from-[#087E73] to-[#08D9C0]' },
+    { id: 'add-product', label: t.dashboard.actionAddProduct, icon: Package, path: '/products', color: 'from-[#087E73] to-[#08D9C0]' },
+    { id: 'record-sale', label: t.dashboard.actionRecordSale, icon: ShoppingCart, path: '/pos', color: 'from-[#087E73]/80 to-[#08D9C0]/80' },
+    { id: 'view-reports', label: t.dashboard.actionViewReports, icon: FileText, path: '/reports', color: theme === 'dark' ? 'from-[#101516] to-[#0C1112]' : 'from-slate-100 to-slate-200 text-slate-900', border: true },
+    { id: 'voice-ai', label: t.dashboard.actionVoiceAI, icon: Bot, path: '/pos', color: 'from-[#087E73] to-[#08D9C0]' },
   ];
 
   return (
@@ -24,8 +26,8 @@ export default function QuickActions() {
           <Rocket className="w-5 h-5" />
         </div>
         <div>
-          <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Quick Actions</h3>
-          <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Shortcuts for daily operations</p>
+          <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.dashboard.quickActions}</h3>
+          <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>{t.dashboard.dailyShortcuts}</p>
         </div>
       </div>
 
@@ -34,7 +36,7 @@ export default function QuickActions() {
           const IconC = act.icon;
           return (
             <button
-              key={act.label}
+              key={act.id}
               onClick={() => navigate(act.path)}
               className={`p-4 rounded-xl flex flex-col items-start justify-between gap-3 bg-gradient-to-br ${act.color} text-black font-semibold hover:opacity-95 transition shadow-lg text-left group`}
             >

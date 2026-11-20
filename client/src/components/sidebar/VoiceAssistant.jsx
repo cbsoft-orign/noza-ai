@@ -1,11 +1,13 @@
 import { ChevronRight } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
+import { getTranslations } from '../../data/translations';
 
 export default function VoiceAssistant({ onNavigate }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { theme } = useApp();
+  const { theme, lang } = useApp();
+  const t = getTranslations(lang);
 
   const handleClick = () => {
     onNavigate?.();
@@ -34,8 +36,8 @@ export default function VoiceAssistant({ onNavigate }) {
           <span className="w-1 bg-[#08D9C0] h-4 rounded-full animate-pulse delay-200" />
         </div>
         <div>
-          <p className="text-xs font-bold tracking-wide">Voice Assistant</p>
-          <p className={`text-[10px] ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Open voice sales assistant</p>
+          <p className="text-xs font-bold tracking-wide">{t.nav.voiceAssistant}</p>
+          <p className={`text-[10px] ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>{t.nav.voiceAssistantSub}</p>
         </div>
       </div>
       <ChevronRight className="w-4 h-4 text-[#08D9C0] group-hover:translate-x-0.5 transition" />

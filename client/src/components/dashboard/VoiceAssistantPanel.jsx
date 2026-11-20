@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Send, Sparkles } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 import { apiUrl } from '../../api';
+import { getTranslations } from '../../data/translations';
 
 export default function VoiceAssistantPanel() {
-  const { theme, refreshShopData } = useApp();
+  const { theme, refreshShopData, lang } = useApp();
+  const t = getTranslations(lang);
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -12,7 +14,7 @@ export default function VoiceAssistantPanel() {
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const [chatLog, setChatLog] = useState([
-    { sender: 'ai', text: 'Muraho! Ndi Voice Assistant yawe. Vuga itegeko rimwe cyangwa wandike mu gasanduku kari hasi.' },
+    { sender: 'ai', isInitial: true, text: t.voice.initialMessage },
   ]);
 
   const runCommand = async (userText) => {
@@ -26,11 +28,11 @@ export default function VoiceAssistantPanel() {
         body: JSON.stringify({ text: userText }),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.message || 'Could not process command.');
+      if (!res.ok || !data.ok) throw new Error(data.message || t.voice.commandFailed);
       setChatLog((prev) => [...prev, { sender: 'ai', text: data.response }]);
-      await refreshShopData().catch((refreshError) => setError(refreshError.message || 'Could not refresh shop data.'));
+      await refreshShopData().catch((refreshError) => setError(refreshError.message || t.voice.refreshFailed));
     } catch (requestError) {
-      setError(requestError.message || 'Could not process command.');
+      setError(requestError.message || t.voice.commandFailed);
     } finally {
       setProcessing(false);
     }
@@ -53,7 +55,7 @@ export default function VoiceAssistantPanel() {
     }
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setError('This browser does not support microphone recording.');
+      setError(t.voice.micUnsupported);
       return;
     }
 
@@ -69,7 +71,7 @@ export default function VoiceAssistantPanel() {
         if (event.data.size) chunks.push(event.data);
       };
       recorder.onerror = () => {
-        setError('Microphone recording failed.');
+        setError(t.voice.micFailed);
         setRecording(false);
       };
       recorder.onstop = async () => {
@@ -79,7 +81,7 @@ export default function VoiceAssistantPanel() {
         setRecording(false);
         const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
         if (!audio.size) {
-          setError('No audio was recorded. Try again.');
+          setError(t.voice.noAudio);
           return;
         }
 
@@ -94,11 +96,11 @@ export default function VoiceAssistantPanel() {
             body: formData,
           });
           const data = await response.json();
-          if (!response.ok || !data.ok) throw new Error(data.message || 'Transcription failed.');
+          if (!response.ok || !data.ok) throw new Error(data.message || t.voice.transcriptionFailed);
           setChatLog((prev) => [...prev, { sender: 'user', text: data.transcript }]);
           await runCommand(data.transcript);
         } catch (requestError) {
-          setError(requestError.message || 'Could not transcribe audio.');
+          setError(requestError.message || t.voice.couldNotTranscribe);
         } finally {
           setProcessing(false);
         }
@@ -108,7 +110,7 @@ export default function VoiceAssistantPanel() {
     } catch (requestError) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-      setError(requestError.message || 'Microphone access was denied.');
+      setError(requestError.message || t.voice.micDenied);
     }
   };
 
@@ -131,8 +133,8 @@ export default function VoiceAssistantPanel() {
             <Sparkles className="w-5 h-5 animate-pulse" />
           </div>
           <div>
-            <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Dashboard Kinyarwanda Voice & AI Console</h3>
-            <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Interact with your shop intelligence inside the dashboard area</p>
+            <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.voice.panelTitle}</h3>
+            <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>{t.voice.panelSubtitle}</p>
           </div>
         </div>
         <button
@@ -143,7 +145,7 @@ export default function VoiceAssistantPanel() {
           }`}
         >
           {recording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-          <span>{processing ? 'Processing...' : recording ? 'Stop Recording' : 'Speak'}</span>
+          <span>{processing ? t.common.processing : recording ? t.common.stopRecording : t.voice.speak}</span>
         </button>
       </div>
 
@@ -159,10 +161,10 @@ export default function VoiceAssistantPanel() {
       </div>
 
       <div className={`mb-3 rounded-xl border p-3 text-xs leading-relaxed ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-        <p className={`mb-1 font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Amabwiriza y’ijwi (Voice tips)</p>
-        <p>Gurisha: <strong>“Gurisha umuceri ibiro bibiri”</strong> · Ongeraho stock: <strong>“Ongeraho isukari eshanu”</strong></p>
-        <p>Reba stock: <strong>“Reba ububiko”</strong> · Raporo: <strong>“Raporo y’uyu munsi”</strong></p>
-        <p className="mt-1">Vuga itegeko rimwe gahoro kandi mu ituze; koresha izina ry’igicuruzwa nk’uko ryanditse muri stock. Niba transcript itari yo, andika itegeko rikwiye mu gasanduku kari hasi.</p>
+        <p className={`mb-1 font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.voice.tipsTitle}</p>
+        <p>{t.voice.tipSell} <strong>{t.voice.tipSellEx}</strong> · {t.voice.tipRestock} <strong>{t.voice.tipRestockEx}</strong></p>
+        <p>{t.voice.tipStock} <strong>{t.voice.tipStockEx}</strong> · {t.voice.tipReport} <strong>{t.voice.tipReportEx}</strong></p>
+        <p className="mt-1">{t.voice.tipsNote}</p>
       </div>
 
       {/* Chat scroll box */}
@@ -170,7 +172,7 @@ export default function VoiceAssistantPanel() {
         {chatLog.map((log, idx) => (
           <div key={idx} className={`flex ${log.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] px-3 py-2 rounded-xl leading-relaxed ${log.sender === 'user' ? 'bg-[#08D9C0] text-black font-semibold' : theme === 'dark' ? 'bg-[#101516] border border-[#202829] text-white' : 'bg-white border border-slate-200 text-slate-900'}`}>
-              {log.text}
+              {log.isInitial ? t.voice.initialMessage : log.text}
             </div>
           </div>
         ))}
@@ -184,7 +186,7 @@ export default function VoiceAssistantPanel() {
           value={inputCommand}
           onChange={(e) => setInputCommand(e.target.value)}
           disabled={processing}
-          placeholder="Type or speak command (e.g. Gurisha umuceri ibiro bibiri)..."
+          placeholder={t.voice.inputPlaceholder}
           className={`flex-1 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#08D9C0] border ${
             theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-white placeholder-[#747E80]' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
           }`}
@@ -195,7 +197,7 @@ export default function VoiceAssistantPanel() {
           className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#087E73] to-[#08D9C0] text-black font-bold text-xs hover:opacity-95 transition flex items-center gap-1"
         >
           <Send className="w-3.5 h-3.5" />
-          <span>Send</span>
+          <span>{t.common.send}</span>
         </button>
       </form>
     </div>

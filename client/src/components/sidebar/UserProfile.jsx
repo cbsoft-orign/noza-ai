@@ -1,10 +1,13 @@
 import { User, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
+import { getTranslations } from '../../data/translations';
 
 export default function UserProfile() {
-  const { user, shop, theme } = useApp();
+  const { user, shop, theme, lang } = useApp();
   const navigate = useNavigate();
+  const t = getTranslations(lang);
+  const roleLabel = user?.role === 'worker' ? t.team.workerBadge : t.common.admin;
 
   return (
     <div
@@ -21,7 +24,7 @@ export default function UserProfile() {
         </div>
         <div className="overflow-hidden">
           <p className="text-sm font-medium truncate">{user.name}</p>
-          <p className={`text-[10px] truncate uppercase tracking-wider ${theme === 'dark' ? 'text-[#747E80]' : 'text-slate-500'}`}>Admin • {shop.name}</p>
+          <p className={`text-[10px] truncate uppercase tracking-wider ${theme === 'dark' ? 'text-[#747E80]' : 'text-slate-500'}`}>{roleLabel} • {shop.name}</p>
         </div>
       </div>
       <ChevronDown className={`w-4 h-4 ${theme === 'dark' ? 'text-[#747E80]' : 'text-slate-400'}`} />

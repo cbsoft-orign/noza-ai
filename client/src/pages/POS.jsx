@@ -4,9 +4,11 @@ import { useLocation } from 'react-router-dom';
 import { useApp } from '../context/useApp';
 import { apiUrl } from '../api';
 import { discreteProductUnits, formatUnitAmount, formatUnitLabel } from '../data/productUnits';
+import { getTranslations } from '../data/translations';
 
 export default function POS() {
-  const { products, recordSale, theme, refreshShopData } = useApp();
+  const { products, recordSale, theme, refreshShopData, lang } = useApp();
+  const t = getTranslations(lang);
   const location = useLocation();
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -17,7 +19,7 @@ export default function POS() {
   // Voice & WhatsApp simulator state
   const [whatsappText, setWhatsappText] = useState('Gurisha umuceri ibiro bibiri');
   const [whatsappLog, setWhatsappLog] = useState([
-    { sender: 'shop', text: 'Muraho! Vuga cyangwa wandike itegeko ryo kugurisha, kongera stock, gukora igicuruzwa, cyangwa guhindura ibiciro.' },
+    { sender: 'shop', isInitial: true, text: t.pos.initialBotMsg },
   ]);
   const [transcribing, setTranscribing] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -51,18 +53,23 @@ export default function POS() {
     e.preventDefault();
     const product = products.find((item) => String(item.id) === String(selectedProductId));
     if (!product) {
-      setCheckoutError('Select a product before completing the sale.');
+      setCheckoutError(t.pos.selectProductErr);
       return;
     }
     const saleQuantity = Number(quantity);
     if (!Number.isFinite(saleQuantity) || saleQuantity <= 0) {
-      setCheckoutError('Enter a quantity greater than zero.');
+      setCheckoutError(t.pos.quantityPositiveErr);
       return;
     }
     setCheckoutError('');
     const recorded = await recordSale(product.id, saleQuantity, soldBy);
     if (!recorded) return;
-    setSuccessMsg(`Successfully sold ${formatUnitAmount(saleQuantity, product.unit || 'piece')} of ${product.name || 'product'}! Profit added.`);
+    setSuccessMsg(
+      t.pos.saleSuccess(
+        formatUnitAmount(saleQuantity, product.unit || 'piece', lang),
+        product.name || 'product',
+      ),
+    );
     setTimeout(() => setSuccessMsg(''), 4000);
   };
 
@@ -82,15 +89,15 @@ export default function POS() {
         body: JSON.stringify({ text: userMsg }),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.message || 'Command failed.');
+      if (!res.ok || !data.ok) throw new Error(data.message || t.voice.commandFailed);
       setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
       if (['SELL', 'ADD_STOCK', 'CREATE_PRODUCT', 'UPDATE_PRICES'].includes(data.intent)) {
         await refreshShopData().catch((refreshError) => {
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: refreshError.message || 'Could not refresh shop data.' }]);
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: refreshError.message || t.voice.refreshFailed }]);
         });
       }
     } catch (error) {
-      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || 'Could not process command.' }]);
+      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || t.voice.commandFailed }]);
     }
   };
 
@@ -101,7 +108,7 @@ export default function POS() {
     }
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: 'Microphone recording is not supported in this browser.' }]);
+      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: t.voice.micUnsupported }]);
       return;
     }
 
@@ -133,7 +140,7 @@ export default function POS() {
           });
           const transcriptData = await transcriptResponse.json();
           if (!transcriptResponse.ok || !transcriptData.ok) {
-            throw new Error(transcriptData.message || 'Transcription failed.');
+            throw new Error(transcriptData.message || t.voice.transcriptionFailed);
           }
           setWhatsappLog((prev) => [...prev, { sender: 'user', text: transcriptData.transcript }]);
           const commandResponse = await fetch(apiUrl('/api/voice/command'), {
@@ -143,13 +150,13 @@ export default function POS() {
             body: JSON.stringify({ text: transcriptData.transcript, mode: 'sell' }),
           });
           const commandData = await commandResponse.json();
-          if (!commandResponse.ok || !commandData.ok) throw new Error(commandData.message || 'Voice command failed.');
+          if (!commandResponse.ok || !commandData.ok) throw new Error(commandData.message || t.voice.commandFailed);
           setWhatsappLog((prev) => [...prev, { sender: 'shop', text: commandData.response }]);
           await refreshShopData().catch((refreshError) => {
-            setWhatsappLog((prev) => [...prev, { sender: 'shop', text: refreshError.message || 'Could not refresh shop data.' }]);
+            setWhatsappLog((prev) => [...prev, { sender: 'shop', text: refreshError.message || t.voice.refreshFailed }]);
           });
         } catch (error) {
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || 'Voice command failed.' }]);
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || t.voice.commandFailed }]);
         } finally {
           setTranscribing(false);
         }
@@ -157,7 +164,7 @@ export default function POS() {
       recorder.start();
       setRecording(true);
     } catch (error) {
-      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || 'Could not access the microphone.' }]);
+      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || t.voice.micDenied }]);
     }
   };
 
@@ -168,8 +175,8 @@ export default function POS() {
   return (
     <div className="max-w-7xl mx-auto space-y-8">
       <div>
-        <h2 className={`text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>POS & AI Voice Console</h2>
-        <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Record sales or use Kinyarwanda voice and text commands to manage sales, stock, products, and prices.</p>
+        <h2 className={`text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.pos.title}</h2>
+        <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>{t.pos.subtitle}</p>
       </div>
 
       {successMsg && (
@@ -187,14 +194,14 @@ export default function POS() {
               <ShoppingCart className="w-5 h-5" />
             </div>
             <div>
-              <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Fast Checkout (POS)</h3>
-              <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Tap products and record sales instantly</p>
+              <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.pos.fastCheckout}</h3>
+              <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>{t.pos.fastCheckoutSub}</p>
             </div>
           </div>
 
           <form onSubmit={handleCheckout} className="space-y-4">
             <div>
-              <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Select Product</label>
+              <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>{t.pos.selectProduct}</label>
               <select
                 value={selectedProductId}
                 onChange={(e) => setSelectedProductId(e.target.value)}
@@ -206,11 +213,11 @@ export default function POS() {
                 {products.length > 0 ? (
                   products.map((p) => (
                     <option key={p.id} value={String(p.id)}>
-                      {p.name} — RWF {Number(p.selling_price).toLocaleString()} / {formatUnitLabel(p.unit)} · {formatUnitAmount(p.quantity, p.unit)} in stock
+                      {p.name} — RWF {Number(p.selling_price).toLocaleString()} / {formatUnitLabel(p.unit, lang)} · {formatUnitAmount(p.quantity, p.unit, lang)} {t.pos.inStockSuffix}
                     </option>
                   ))
                 ) : (
-                  <option value="">No products available</option>
+                  <option value="">{t.pos.noProductsAvailable}</option>
                 )}
               </select>
             </div>
@@ -218,7 +225,7 @@ export default function POS() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>
-                  Quantity to sell {selectedProduct ? `(${formatUnitLabel(selectedProduct.unit)})` : ''}
+                  {t.pos.quantityToSell} {selectedProduct ? `(${formatUnitLabel(selectedProduct.unit, lang)})` : ''}
                 </label>
                 <input
                   type="number"
@@ -233,12 +240,12 @@ export default function POS() {
                 />
                 {selectedProduct && (
                   <p className={`mt-1.5 text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {formatUnitAmount(selectedProduct.quantity, selectedProduct.unit)} available · RWF {Number(selectedProduct.selling_price).toLocaleString()} per {formatUnitLabel(selectedProduct.unit)}
+                    {formatUnitAmount(selectedProduct.quantity, selectedProduct.unit, lang)} {t.pos.availableSuffix} · RWF {Number(selectedProduct.selling_price).toLocaleString()} {t.pos.perWord} {formatUnitLabel(selectedProduct.unit, lang)}
                   </p>
                 )}
               </div>
               <div>
-                <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Sold By</label>
+                <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>{t.pos.soldBy}</label>
                 <select
                   value={soldBy}
                   onChange={(e) => setSoldBy(e.target.value)}
@@ -246,8 +253,8 @@ export default function POS() {
                     theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                   }`}
                 >
-                  <option value="owner">Shop Owner</option>
-                  <option value="worker">Worker / Employee</option>
+                  <option value="owner">{t.common.owner}</option>
+                  <option value="worker">{t.common.worker}</option>
                 </select>
               </div>
             </div>
@@ -258,8 +265,8 @@ export default function POS() {
               className="w-full py-4 rounded-xl bg-gradient-to-r from-[#087E73] to-[#08D9C0] text-black font-extrabold text-base hover:opacity-95 transition shadow-xl shadow-[#08D9C0]/20 mt-4 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {selectedProduct && Number(selectedProduct.quantity) > 0
-                ? `Complete sale · RWF ${Number.isFinite(saleTotal) ? saleTotal.toLocaleString() : '0'}`
-                : 'No stock available'}
+                ? `${t.pos.completeSale} · RWF ${Number.isFinite(saleTotal) ? saleTotal.toLocaleString() : '0'}`
+                : t.pos.noStockAvailable}
             </button>
             {checkoutError && <p className="text-sm text-red-500" role="alert">{checkoutError}</p>}
           </form>
@@ -278,8 +285,8 @@ export default function POS() {
                   <MessageSquare className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>WhatsApp & Voice Bot</h3>
-                  <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>Speak or type; successful commands update your shop</p>
+                  <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.pos.whatsappBotTitle}</h3>
+                  <p className={`text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>{t.pos.whatsappBotSub}</p>
                 </div>
               </div>
               <button
@@ -289,7 +296,7 @@ export default function POS() {
                 className="px-3.5 py-2 rounded-xl bg-[#087E73]/20 border border-[#08D9C0]/40 text-xs font-bold text-[#08D9C0] hover:bg-[#087E73]/40 transition flex items-center gap-1.5"
               >
                 <Mic className="w-4 h-4 animate-pulse" />
-                <span>{transcribing ? 'Processing...' : recording ? 'Stop Recording' : 'Speak Command'}</span>
+                <span>{transcribing ? t.common.processing : recording ? t.common.stopRecording : t.pos.speakCommand}</span>
               </button>
             </div>
 
@@ -298,18 +305,18 @@ export default function POS() {
               {whatsappLog.map((log, idx) => (
                 <div key={idx} className={`flex ${log.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${log.sender === 'user' ? 'bg-[#08D9C0] text-black font-semibold' : theme === 'dark' ? 'bg-[#101516] border border-[#202829] text-white' : 'bg-white border border-slate-200 text-slate-900'}`}>
-                    {log.text}
+                    {log.isInitial ? t.pos.initialBotMsg : log.text}
                   </div>
                 </div>
               ))}
             </div>
             <div className={`mb-4 rounded-xl border p-3 text-xs leading-relaxed ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-              <p className={`mb-1 font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Vuga mu buryo bworoshye (Examples)</p>
-              <p><strong>“Gurisha umuceri ibiro 2”</strong> · <strong>“Ongeraho isukari kg 5”</strong></p>
-              <p><strong>“Kora igicuruzwa gishya ibirayi, kg, stock 10, kugura 500, kugurisha 700”</strong></p>
-              <p><strong>“Hindura igiciro cyo kugurisha umuceri 1800”</strong> · <strong>“Hindura igiciro cyo kugura umuceri 1500”</strong></p>
-              <p><strong>“Reba ububiko”</strong> · <strong>“Raporo y’uyu munsi”</strong></p>
-              <p className="mt-1">Mu kugurisha ukoresheje mikoro, izina n’umubare birahagije. Mu gukora igicuruzwa vuga stock, igiciro cyo kugura n’icyo kugurisha. Vuga gahoro ahantu hatuje.</p>
+              <p className={`mb-1 font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.pos.examplesTitle}</p>
+              <p><strong>{t.pos.example1}</strong> · <strong>{t.pos.example2}</strong></p>
+              <p><strong>{t.pos.example3}</strong></p>
+              <p><strong>{t.pos.example4}</strong> · <strong>{t.pos.example5}</strong></p>
+              <p><strong>{t.pos.example6}</strong> · <strong>{t.pos.example7}</strong></p>
+              <p className="mt-1">{t.pos.examplesNote}</p>
             </div>
           </div>
 
@@ -318,7 +325,7 @@ export default function POS() {
               type="text"
               value={whatsappText}
               onChange={(e) => setWhatsappText(e.target.value)}
-              placeholder="Andika itegeko, urugero: Hindura igiciro cyo kugurisha umuceri 1800..."
+              placeholder={t.pos.commandPlaceholder}
               className={`flex-1 rounded-xl px-4 py-3 text-sm border focus:outline-none focus:border-[#08D9C0] ${
                 theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-white placeholder-[#747E80]' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
               }`}

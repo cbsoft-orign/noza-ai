@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { Mic, MicOff, X } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 import { apiUrl } from '../../api';
+import { getTranslations } from '../../data/translations';
 
 export default function VoiceAIModal({ isOpen, onClose }) {
-  const { shop, theme } = useApp();
+  const { shop, theme, lang } = useApp();
   const dark = theme === 'dark';
+  const t = getTranslations(lang);
   const [listening, setListening] = useState(isOpen);
-  const [transcript, setTranscript] = useState('Ndateka kuvuga (Speak in Kinyarwanda or English)...');
-  const [aiResponse, setAiResponse] = useState('Muraho! Mfite gute? (How can I help your stock today?)');
+  const [transcript, setTranscript] = useState(() => t.voice.initialTranscript);
+  const [aiResponse, setAiResponse] = useState(() => t.voice.initialAiResponse);
 
   const recordVoiceIntent = useCallback(async () => {
     try {
@@ -45,14 +47,14 @@ export default function VoiceAIModal({ isOpen, onClose }) {
       <div className={`border rounded-2xl p-6 sm:p-8 w-full max-w-lg flex flex-col items-center text-center relative ${dark ? 'bg-[#101516] border-[#08D9C0]/50 shadow-[0_0_50px_rgba(8,217,192,0.25)]' : 'bg-white border-slate-200 shadow-xl'}`}>
         <button
           onClick={onClose}
-          aria-label="Close voice assistant"
+          aria-label={t.voice.closeModalAria}
           className={`absolute top-4 right-4 p-2 rounded-lg transition ${dark ? 'bg-[#07090A] border border-[#202829] text-slate-400 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
         >
           <X className="w-5 h-5" />
         </button>
 
-        <h3 className={`text-xl font-semibold mb-2 ${dark ? 'text-white' : 'text-slate-900'}`}>NOZA Kinyarwanda Voice Assistant</h3>
-        <p className={`text-sm mb-6 ${dark ? 'text-slate-300' : 'text-slate-600'}`}>Speak naturally to manage your store stock and sales</p>
+        <h3 className={`text-xl font-semibold mb-2 ${dark ? 'text-white' : 'text-slate-900'}`}>{t.voice.modalTitle}</h3>
+        <p className={`text-sm mb-6 ${dark ? 'text-slate-300' : 'text-slate-600'}`}>{t.voice.modalSubtitle}</p>
 
         {/* Central Glowing Orb & Gradient Waves */}
         <div className="relative w-48 h-48 flex items-center justify-center my-6">
@@ -76,10 +78,10 @@ export default function VoiceAIModal({ isOpen, onClose }) {
         </div>
 
         <div className={`w-full border rounded-xl p-4 my-4 text-left space-y-2 ${dark ? 'bg-[#07090A] border-[#202829]' : 'bg-slate-50 border-slate-200'}`}>
-          <p className={`text-[11px] uppercase tracking-wider ${dark ? 'text-slate-400' : 'text-slate-500'}`}>Detected Transcript:</p>
+          <p className={`text-[11px] uppercase tracking-wider ${dark ? 'text-slate-400' : 'text-slate-500'}`}>{t.voice.detectedTranscript}</p>
           <p className={`text-sm font-semibold italic ${dark ? 'text-white' : 'text-slate-900'}`}>"{transcript}"</p>
           <hr className={dark ? 'border-[#202829]' : 'border-slate-200'} />
-          <p className={`text-[11px] uppercase tracking-wider ${dark ? 'text-[#08D9C0]' : 'text-[#087E73]'}`}>AI Response:</p>
+          <p className={`text-[11px] uppercase tracking-wider ${dark ? 'text-[#08D9C0]' : 'text-[#087E73]'}`}>{t.voice.aiResponse}</p>
           <p className={`text-sm font-semibold ${dark ? 'text-[#08D9C0]' : 'text-[#087E73]'}`}>{aiResponse}</p>
         </div>
 
@@ -91,13 +93,13 @@ export default function VoiceAIModal({ isOpen, onClose }) {
             }`}
           >
             {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            <span>{listening ? 'Pause Listening' : 'Resume Listening'}</span>
+            <span>{listening ? t.voice.pauseListening : t.voice.resumeListening}</span>
           </button>
           <button
             onClick={onClose}
             className={`px-5 py-2.5 rounded-lg border font-medium text-sm transition ${dark ? 'bg-[#07090A] border-[#202829] text-white hover:border-[#08D9C0]' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}
           >
-            Done
+            {t.common.done}
           </button>
         </div>
       </div>

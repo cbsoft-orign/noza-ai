@@ -1,21 +1,21 @@
 export const productUnits = [
-  { value: 'kg', label: 'Kilogram (kg)' },
-  { value: 'g', label: 'Gram (g)' },
-  { value: 'l', label: 'Litre (L)' },
-  { value: 'ml', label: 'Millilitre (mL)' },
-  { value: 'piece', label: 'Piece' },
-  { value: 'pack', label: 'Pack' },
-  { value: 'bottle', label: 'Bottle' },
-  { value: 'bag', label: 'Bag' },
-  { value: 'bunch', label: 'Bunch' },
-  { value: 'crate', label: 'Crate' },
-  { value: 'tray', label: 'Tray' },
-  { value: 'loaf', label: 'Loaf' },
-  { value: 'slice', label: 'Slice' },
-  { value: 'cup', label: 'Cup' },
-  { value: 'dozen', label: 'Dozen (12 pieces)' },
-  { value: 'box', label: 'Box' },
-  { value: 'pair', label: 'Pair' },
+  { value: 'kg', label: 'Kilogram (kg)', labelRw: 'Ikiro (kg)' },
+  { value: 'g', label: 'Gram (g)', labelRw: 'Garama (g)' },
+  { value: 'l', label: 'Litre (L)', labelRw: 'Litiro (L)' },
+  { value: 'ml', label: 'Millilitre (mL)', labelRw: 'Mililitiro (mL)' },
+  { value: 'piece', label: 'Piece', labelRw: 'Igice' },
+  { value: 'pack', label: 'Pack', labelRw: 'Ipaki' },
+  { value: 'bottle', label: 'Bottle', labelRw: 'Icupa' },
+  { value: 'bag', label: 'Bag', labelRw: 'Umufuka' },
+  { value: 'bunch', label: 'Bunch', labelRw: 'Umusatsi / Igishyitsi' },
+  { value: 'crate', label: 'Crate', labelRw: 'Ikesi' },
+  { value: 'tray', label: 'Tray', labelRw: 'Utrayi' },
+  { value: 'loaf', label: 'Loaf', labelRw: 'Umugati' },
+  { value: 'slice', label: 'Slice', labelRw: 'Igisate' },
+  { value: 'cup', label: 'Cup', labelRw: 'Igikombe' },
+  { value: 'dozen', label: 'Dozen (12 pieces)', labelRw: 'Iduzeni (12)' },
+  { value: 'box', label: 'Box', labelRw: 'Ikarito' },
+  { value: 'pair', label: 'Pair', labelRw: 'Ipari' },
 ];
 
 export const discreteProductUnits = new Set([
@@ -54,6 +54,26 @@ const unitLabels = {
   pair: 'pair',
 };
 
+const unitLabelsRw = {
+  kg: 'kg',
+  g: 'g',
+  l: 'L',
+  ml: 'mL',
+  piece: 'igice',
+  pack: 'ipaki',
+  bottle: 'icupa',
+  bag: 'umufuka',
+  bunch: 'igishyitsi',
+  crate: 'ikesi',
+  tray: 'utrayi',
+  loaf: 'umugati',
+  slice: 'igisate',
+  cup: 'igikombe',
+  dozen: 'iduzeni',
+  box: 'ikarito',
+  pair: 'ipari',
+};
+
 const pluralUnitLabels = {
   piece: 'pieces',
   pack: 'packs',
@@ -70,16 +90,34 @@ const pluralUnitLabels = {
   pair: 'pairs',
 };
 
-export function formatUnitLabel(unit) {
+const pluralUnitLabelsRw = {
+  piece: 'ibice',
+  pack: 'amapaki',
+  bottle: 'amacupa',
+  bag: 'imifuka',
+  bunch: 'ibishyitsi',
+  crate: 'amakesi',
+  tray: 'utrayi',
+  loaf: 'imigati',
+  slice: 'ibisate',
+  cup: 'ibikombe',
+  dozen: 'amaduzeni',
+  box: 'amakarito',
+  pair: 'amapari',
+};
+
+export function formatUnitLabel(unit, lang = 'en') {
+  if (lang === 'rw') return unitLabelsRw[unit] || unit;
   return unitLabels[unit] || unit;
 }
 
-export function formatUnitAmount(quantity, unit) {
+export function formatUnitAmount(quantity, unit, lang = 'en') {
   const amount = Number(quantity);
   const formattedAmount = Number.isFinite(amount)
     ? amount.toLocaleString(undefined, { maximumFractionDigits: 2 })
     : String(quantity);
-  const label = amount === 1 ? formatUnitLabel(unit) : pluralUnitLabels[unit] || formatUnitLabel(unit);
+  const plurals = lang === 'rw' ? pluralUnitLabelsRw : pluralUnitLabels;
+  const label = amount === 1 ? formatUnitLabel(unit, lang) : plurals[unit] || formatUnitLabel(unit, lang);
   return `${formattedAmount} ${label}`;
 }
 

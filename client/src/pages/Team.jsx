@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Users, UserPlus, Phone } from 'lucide-react';
 import { useApp } from '../context/useApp';
+import { getTranslations } from '../data/translations';
 
 export default function Team() {
-  const { user, shop, theme } = useApp();
+  const { user, shop, theme, lang } = useApp();
+  const t = getTranslations(lang);
   const [workers, setWorkers] = useState([
     { id: 1, name: 'Jean Bosco', phone: '250788111222', role: 'worker', salesToday: 145000 },
     { id: 2, name: 'Marie Uwase', phone: '250788333444', role: 'worker', salesToday: 98000 },
@@ -24,8 +26,8 @@ export default function Team() {
     <div className="max-w-7xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h2 className={`text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Team & Worker Management</h2>
-          <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Manage employee permissions and view sales attribution for {shop.name}.</p>
+          <h2 className={`text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.team.title}</h2>
+          <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>{t.team.subtitle(shop.name)}</p>
         </div>
         {user.role === 'owner' && (
           <button
@@ -33,7 +35,7 @@ export default function Team() {
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#087E73] to-[#08D9C0] text-black font-bold text-sm hover:opacity-95 transition shadow-lg shadow-[#08D9C0]/20 flex items-center gap-2"
           >
             <UserPlus className="w-4 h-4" />
-            <span>Add Shop Worker</span>
+            <span>{t.team.addWorker}</span>
           </button>
         )}
       </div>
@@ -41,7 +43,7 @@ export default function Team() {
       <div className={`border rounded-2xl overflow-hidden shadow-sm ${theme === 'dark' ? 'bg-[#101516] border-[#202829]' : 'bg-white border-slate-200'}`}>
         <div className={`p-6 border-b ${theme === 'dark' ? 'border-[#202829]' : 'border-slate-200'} flex items-center gap-3`}>
           <Users className="w-5 h-5 text-[#08D9C0]" />
-          <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Authorized Personnel</h3>
+          <h3 className={`font-bold text-base ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.team.authorizedPersonnel}</h3>
         </div>
 
         <div className={`divide-y ${theme === 'dark' ? 'divide-[#202829]' : 'divide-slate-200'}`}>
@@ -51,14 +53,14 @@ export default function Team() {
                 {user.name.charAt(0)}
               </div>
               <div>
-                <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.name} (You)</p>
+                <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.name} ({t.common.you})</p>
                 <p className={`text-xs flex items-center gap-1 mt-0.5 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>
                   <Phone className="w-3 h-3 text-[#08D9C0]" /> {shop.phone}
                 </p>
               </div>
             </div>
             <span className="px-3 py-1 rounded-full bg-[#08D9C0]/10 border border-[#08D9C0]/30 text-xs font-bold text-[#08D9C0] uppercase">
-              Shop Owner
+              {t.team.shopOwnerBadge}
             </span>
           </div>
 
@@ -71,12 +73,12 @@ export default function Team() {
                 <div>
                   <p className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{w.name}</p>
                   <p className={`text-xs flex items-center gap-1 mt-0.5 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>
-                    <Phone className="w-3 h-3 text-[#08D9C0]" /> {w.phone} • Sales Today: RWF {w.salesToday.toLocaleString()}
+                    <Phone className="w-3 h-3 text-[#08D9C0]" /> {w.phone} • {t.team.salesToday} RWF {w.salesToday.toLocaleString()}
                   </p>
                 </div>
               </div>
               <span className={`px-3 py-1 rounded-full border text-xs font-semibold uppercase ${theme === 'dark' ? 'bg-[#747E80]/10 border-[#747E80]/30 text-[#B4BABB]' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
-                Worker
+                {t.team.workerBadge}
               </span>
             </div>
           ))}
@@ -86,10 +88,10 @@ export default function Team() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`border rounded-3xl p-6 w-full max-w-md shadow-2xl ${theme === 'dark' ? 'bg-[#101516] border-[#202829] text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
-            <h3 className="text-xl font-bold mb-4">Add Worker Access</h3>
+            <h3 className="text-xl font-bold mb-4">{t.team.modalTitle}</h3>
             <form onSubmit={handleAddWorker} className="space-y-4">
               <div>
-                <label className={`block text-xs font-semibold uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Worker Name</label>
+                <label className={`block text-xs font-semibold uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>{t.team.workerNameLabel}</label>
                 <input
                   type="text"
                   value={workerName}
@@ -102,7 +104,7 @@ export default function Team() {
                 />
               </div>
               <div>
-                <label className={`block text-xs font-semibold uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>Phone Number</label>
+                <label className={`block text-xs font-semibold uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-600'}`}>{t.team.workerPhoneLabel}</label>
                 <input
                   type="text"
                   value={workerPhone}
@@ -120,13 +122,13 @@ export default function Team() {
                   onClick={() => setIsModalOpen(false)}
                   className={`px-4 py-2 rounded-xl text-sm ${theme === 'dark' ? 'bg-[#07090A] text-[#B4BABB] hover:text-white' : 'bg-slate-100 text-slate-700 hover:text-slate-900'}`}
                 >
-                  Cancel
+                  {t.common.cancel}
                 </button>
                 <button
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#087E73] to-[#08D9C0] text-black font-bold text-sm hover:opacity-95"
                 >
-                  Save Worker
+                  {t.team.saveWorker}
                 </button>
               </div>
             </form>

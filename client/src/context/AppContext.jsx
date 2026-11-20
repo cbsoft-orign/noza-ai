@@ -1,11 +1,23 @@
 import { createContext, useState, useEffect, useRef, useCallback } from 'react';
 import { apiUrl } from '../api';
 import { formatUnitAmount } from '../data/productUnits';
+import { getTranslations } from '../data/translations';
 
 export const AppContext = createContext();
 
+const LANG_STORAGE_KEY = 'noza_lang';
+
+function readSessionLang() {
+  try {
+    const stored = window.sessionStorage.getItem(LANG_STORAGE_KEY);
+    return stored === 'rw' ? 'rw' : 'en';
+  } catch {
+    return 'en';
+  }
+}
+
 export function AppProvider({ children }) {
-  const [lang, setLang] = useState('en'); // 'en' | 'rw'
+  const [lang, setLangState] = useState(readSessionLang); // 'en' | 'rw'
   const [theme, setTheme] = useState('light'); // 'dark' | 'light'
   const [shop, setShop] = useState({
     id: '',
@@ -24,11 +36,27 @@ export function AppProvider({ children }) {
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
   const [activities, setActivities] = useState([]);
-  const [backendStatus, setBackendStatus] = useState('Checking...');
+  const [backendStatus, setBackendStatus] = useState('checking');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const authRequestVersion = useRef(0);
   const shopDataRefreshRef = useRef(null);
+
+  const setLang = useCallback((nextLangOrUpdater) => {
+    setLangState((prev) => {
+      const resolved = typeof nextLangOrUpdater === 'function' ? nextLangOrUpdater(prev) : nextLangOrUpdater;
+      return resolved === 'rw' ? 'rw' : 'en';
+    });
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    try {
+      window.sessionStorage.setItem(LANG_STORAGE_KEY, lang);
+    } catch {
+      // Ignore storage failures in restricted browsing contexts
+    }
+  }, [lang]);
 
   useEffect(() => {
     document.documentElement.style.colorScheme = theme;
@@ -93,8 +121,8 @@ export function AppProvider({ children }) {
   useEffect(() => {
     fetch(apiUrl('/api/health'))
       .then((res) => res.json())
-      .then((data) => setBackendStatus(data.ok ? 'Connected (Backend Active)' : 'Offline'))
-      .catch(() => setBackendStatus('Offline'));
+      .then((data) => setBackendStatus(data.ok ? 'connected' : 'offline'))
+      .catch(() => setBackendStatus('offline'));
 
     const requestVersion = ++authRequestVersion.current;
     fetch(apiUrl('/api/auth/session'), { credentials: 'include' })
@@ -147,8 +175,9 @@ export function AppProvider({ children }) {
   };
 
   const addProduct = async (newProd) => {
+    const t = getTranslations(lang);
     if (products.length >= 10 && shop.plan === 'free') {
-      alert(lang === 'rw' ? 'Wageze ku mpera ya Free Plan (ibicuruzwa 10). Andika ISHYURA 200.' : 'Free plan limit reached (10 products). Please upgrade via MoMo.');
+      alert(t.context.freeLimitAlert);
       return false;
     }
     try {
@@ -160,24 +189,25 @@ export function AppProvider({ children }) {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        alert(data.message || 'Could not add product.');
+        alert(data.message || t.context.addProductFailed);
         return false;
       }
       setProducts((prev) => [data.item, ...prev]);
       setActivities((prev) => [{
         id: Date.now(),
         type: 'stock',
-        text: `Stock updated: ${data.item.name} (+${formatUnitAmount(data.item.quantity, data.item.unit)})`,
-        time: 'Just now',
+        text: t.context.stockUpdated(data.item.name, formatUnitAmount(data.item.quantity, data.item.unit, lang)),
+        time: t.common.justNow,
       }, ...prev]);
       return true;
     } catch {
-      alert('Backend unavailable. Could not add product.');
+      alert(t.context.addProductUnavailable);
       return false;
     }
   };
 
   const addStock = async (productId, quantity) => {
+    const t = getTranslations(lang);
     try {
       const res = await fetch(apiUrl('/api/products'), {
         method: 'PATCH',
@@ -187,24 +217,30 @@ export function AppProvider({ children }) {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        alert(data.message || 'Could not add stock.');
+        alert(data.message || t.context.addStockFailed);
         return false;
       }
       setProducts((prev) => prev.map((product) => (
         String(product.id) === String(data.item.id) ? data.item : product
       )));
       setActivities((prev) => [
-        { id: Date.now(), type: 'stock', text: `Stock received: ${data.item.name} (+${formatUnitAmount(quantity, data.item.unit)})`, time: 'Just now' },
+        {
+          id: Date.now(),
+          type: 'stock',
+          text: t.context.stockReceived(data.item.name, formatUnitAmount(quantity, data.item.unit, lang)),
+          time: t.common.justNow,
+        },
         ...prev,
       ]);
       return true;
     } catch {
-      alert('Backend unavailable. Could not add stock.');
+      alert(t.context.addStockUnavailable);
       return false;
     }
   };
 
   const recordSale = async (productId, qty, soldBy = user.role) => {
+    const t = getTranslations(lang);
     const product = products.find((p) => String(p.id) === String(productId));
     if (!product) return false;
     try {
@@ -216,18 +252,27 @@ export function AppProvider({ children }) {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        alert(data.message || 'Could not record sale.');
+        alert(data.message || t.context.recordSaleFailed);
         return false;
       }
       setSales((prev) => [data.item, ...prev]);
       setProducts((prev) => prev.map((p) => (String(p.id) === String(data.product.id) ? data.product : p)));
       setActivities((prev) => [
-        { id: Date.now(), type: 'sale', text: `New sale: RWF ${(qty * product.selling_price).toLocaleString()} (${product.name}: ${formatUnitAmount(qty, product.unit)})`, time: 'Just now' },
+        {
+          id: Date.now(),
+          type: 'sale',
+          text: t.context.newSale(
+            (qty * product.selling_price).toLocaleString(),
+            product.name,
+            formatUnitAmount(qty, product.unit, lang),
+          ),
+          time: t.common.justNow,
+        },
         ...prev,
       ]);
       return true;
     } catch {
-      alert('Backend unavailable. Could not record sale.');
+      alert(t.context.recordSaleUnavailable);
       return false;
     }
   };
