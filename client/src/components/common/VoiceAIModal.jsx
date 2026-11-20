@@ -1,44 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Mic, MicOff, X } from 'lucide-react';
 import { useApp } from '../../context/useApp';
-import { apiUrl } from '../../api';
 import { getTranslations } from '../../data/translations';
 
 export default function VoiceAIModal({ isOpen, onClose }) {
-  const { shop, theme, lang } = useApp();
+  const { theme, lang } = useApp();
   const dark = theme === 'dark';
   const t = getTranslations(lang);
   const [listening, setListening] = useState(isOpen);
   const [transcript, setTranscript] = useState(() => t.voice.initialTranscript);
   const [aiResponse, setAiResponse] = useState(() => t.voice.initialAiResponse);
 
-  const recordVoiceIntent = useCallback(async () => {
-    try {
-      const res = await fetch(apiUrl('/api/voice/transcribe'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ phone: shop.phone, audioUrl: 'https://example.com/voice.ogg' }),
-      });
-      const data = await res.json();
-      if (data.response) {
-        setAiResponse(data.response);
-      }
-    } catch {
-      // fallback handled
-    }
-  }, [shop.phone]);
-
   useEffect(() => {
     if (isOpen) {
       const timer = setTimeout(() => {
         setTranscript('Gurisha umuceri 2');
         setAiResponse('Umuceri 2 wagurishijwe - Inyungu 600 RWF');
-        recordVoiceIntent();
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, recordVoiceIntent]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

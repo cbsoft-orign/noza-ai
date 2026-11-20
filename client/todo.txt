@@ -112,9 +112,8 @@ Voice, and Inventory/Sales Manager for Rwandan retail shops (dukas).
     - Fast Point-of-Sale Grid: Tap product cards, choose quantity (including
       fractional 0.1 for slices/cups or bulk ID x Qty like 1x2), select
       sold_by (owner / worker), and complete sale with live profit preview.
-    - Voice Command Console: Record or paste audio URL -> POST /api/voice/transcribe
-      -> display Kinyarwanda transcript, parsed intent (SELL / ADD / STOCK),
-      stock update result, and voice-note synthesis status.
+    - Voice Command Console: Transcribe microphone audio in a browser Web Worker,
+      then send recognized text to POST /api/voice/command for stock updates.
     - WhatsApp Command Tester: Interactive chat simulator wired to
       POST /api/whatsapp/webhook for testing text commands (STOCK,
       Gurisha umuceri 2, Mfite umuceri 10, 1x2, REPORT).
@@ -141,8 +140,7 @@ Voice, and Inventory/Sales Manager for Rwandan retail shops (dukas).
 
 [ ] 4.7 Shop & Integration Settings (/settings)
     - Edit shop name, village (Nyabugogo, Kicukiro), and phone number.
-    - View WhatsApp Cloud API / OpenAI Whisper / Google Cloud TTS / Supabase
-      connection readiness.
+    - View WhatsApp Cloud API / Supabase connection readiness and browser model status.
     - Default language preference (Kinyarwanda / English).
 
 
@@ -153,7 +151,7 @@ Already Available in /server:
   - GET  /api/dashboard
   - GET  /api/catalog?village=...
   - POST /api/products/from-image
-  - POST /api/voice/transcribe
+  - POST /api/voice/command
   - GET / POST /api/whatsapp/webhook
   - POST /api/payments
   - GET  /api/cron/daily-report

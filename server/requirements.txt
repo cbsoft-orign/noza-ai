@@ -1,5 +1,0 @@
-openai-whisper==20240930
-transformers==4.46.3
-huggingface-hub[hf_xet]>=0.26,<1.0
-safetensors>=0.4.4,<1.0
-numpy<2.0

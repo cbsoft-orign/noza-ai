@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { createShop, getShopByPhone } from '@/lib/store';
 import { detectIntent, parseMessageText, resolveShopPhone } from '@/lib/intent';
 import { sendWhatsAppText, verifyWebhookToken } from '@/lib/whatsapp';
-import { transcribeAudioFromUrl } from '@/lib/voice';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -40,12 +39,11 @@ export async function POST(request: Request) {
     if (type === 'text') {
       text = message.text?.body ?? '';
     } else if (type === 'audio' || type === 'voice') {
-      const mediaId = message.audio?.id ?? message.voice?.id ?? message?.audio?.id;
-      const mediaUrl = mediaId ? `https://graph.facebook.com/v19.0/${mediaId}` : null;
-      if (!mediaUrl) {
-        return NextResponse.json({ ok: false, message: 'Audio media ID required' }, { status: 400 });
-      }
-      text = await transcribeAudioFromUrl(mediaUrl);
+      await sendWhatsAppText(
+        from,
+        'Ubutumwa bw’ijwi bwa WhatsApp ntibushobora guhindurwa hano. Andika itegeko cyangwa ukoreshe mikoro muri porogaramu ya NOZA.',
+      );
+      return NextResponse.json({ ok: true, status: 'voice_message_not_supported' });
     } else if (type === 'image') {
       text = 'Mfite ifoto ya ibicuruzwa';
     }
