@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Send, Sparkles } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 import { apiUrl } from '../../api';
-import useBrowserWhisper from '../../hooks/useBrowserWhisper';
+import useBrowserKinyarwandaAsr from '../../hooks/useBrowserKinyarwandaAsr';
 import { getTranslations } from '../../data/translations';
 
 export default function VoiceAssistantPanel() {
-  const { theme, refreshShopData, lang, products } = useApp();
+  const { theme, refreshShopData, lang } = useApp();
   const t = getTranslations(lang);
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -17,11 +17,10 @@ export default function VoiceAssistantPanel() {
     progress: modelProgress,
     error: transcriptionError,
     transcribe,
-    recognizeOnline,
-  } = useBrowserWhisper();
+    prepare: prepareTranscriptionModel,
+  } = useBrowserKinyarwandaAsr();
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
-  const onlineRecognitionRef = useRef(null);
   const [chatLog, setChatLog] = useState([
     { sender: 'ai', isInitial: true, text: t.voice.initialMessage },
   ]);
@@ -66,7 +65,6 @@ export default function VoiceAssistantPanel() {
     setError('');
     if (recorderRef.current?.state === 'recording') {
       recorderRef.current.stop();
-      onlineRecognitionRef.current?.stop();
       return;
     }
 
@@ -75,15 +73,10 @@ export default function VoiceAssistantPanel() {
       return;
     }
 
-    let onlineResultReady = false;
-    onlineRecognitionRef.current = recognizeOnline(() => {
-      onlineResultReady = true;
-      if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-    }, products.map((product) => product.name));
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      prepareTranscriptionModel();
       const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
         .find((type) => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -100,8 +93,6 @@ export default function VoiceAssistantPanel() {
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         recorderRef.current = null;
-        const onlineRecognition = onlineRecognitionRef.current;
-        onlineRecognitionRef.current = null;
         setRecording(false);
         const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
         if (!audio.size) {
@@ -111,17 +102,9 @@ export default function VoiceAssistantPanel() {
 
         setProcessing(true);
         try {
-          const onlineTranscript = onlineRecognition ? await onlineRecognition.result : '';
-          let transcript = onlineTranscript
-            || await transcribe(audio, 'rw', products.map((product) => product.name));
+          const transcript = await transcribe(audio);
           setChatLog((prev) => [...prev, { sender: 'user', text: transcript }]);
-          let commandResult = await runCommand(transcript);
-          if (!commandResult.ok && commandResult.status === 422 && onlineTranscript) {
-            setProcessing(true);
-            transcript = await transcribe(audio, 'rw', products.map((product) => product.name));
-            setChatLog((prev) => [...prev, { sender: 'user', text: transcript }]);
-            commandResult = await runCommand(transcript);
-          }
+          await runCommand(transcript);
         } catch (requestError) {
           setError(requestError.message || t.voice.couldNotTranscribe);
         } finally {
@@ -130,10 +113,7 @@ export default function VoiceAssistantPanel() {
       };
       recorder.start();
       setRecording(true);
-      if (onlineResultReady) recorder.stop();
     } catch (requestError) {
-      onlineRecognitionRef.current?.stop();
-      onlineRecognitionRef.current = null;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       setError(requestError.message || t.voice.micDenied);
@@ -143,7 +123,6 @@ export default function VoiceAssistantPanel() {
   useEffect(() => () => {
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
     streamRef.current?.getTracks().forEach((track) => track.stop());
-    onlineRecognitionRef.current?.stop();
   }, []);
 
   return (
@@ -187,7 +166,7 @@ export default function VoiceAssistantPanel() {
         ))}
       </div>
 
-      {(transcriptionPhase === 'loading' || transcriptionPhase === 'decoding' || transcriptionPhase === 'transcribing' || transcriptionPhase === 'online') && (
+      {(transcriptionPhase === 'loading' || transcriptionPhase === 'decoding' || transcriptionPhase === 'transcribing') && (
         <div className={`mb-3 rounded-xl border p-3 text-xs ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`} role="status" aria-live="polite">
           {transcriptionPhase === 'loading' ? (
             <>
@@ -200,13 +179,14 @@ export default function VoiceAssistantPanel() {
             <p>
               {transcriptionPhase === 'decoding'
                 ? t.voice.preparingAudio
-                : transcriptionPhase === 'online'
-                  ? t.voice.onlineTranscribing
-                  : t.voice.transcribingInBrowser}
+                : t.voice.transcribingInBrowser}
             </p>
           )}
         </div>
       )}
+      <p className={`mb-3 text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>
+        {t.voice.localModelNotice}
+      </p>
       {transcriptionError && <p className="mb-3 text-xs text-red-400" role="alert">{transcriptionError}</p>}
 
       <div className={`mb-3 rounded-xl border p-3 text-xs leading-relaxed ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>

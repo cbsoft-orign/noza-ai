@@ -3,7 +3,7 @@ import { ShoppingCart, Mic, MessageSquare, Send, CheckCircle2 } from 'lucide-rea
 import { useLocation } from 'react-router-dom';
 import { useApp } from '../context/useApp';
 import { apiUrl } from '../api';
-import useBrowserWhisper from '../hooks/useBrowserWhisper';
+import useBrowserKinyarwandaAsr from '../hooks/useBrowserKinyarwandaAsr';
 import { discreteProductUnits, formatUnitAmount, formatUnitLabel } from '../data/productUnits';
 import { getTranslations } from '../data/translations';
 
@@ -29,10 +29,9 @@ export default function POS() {
     progress: modelProgress,
     error: transcriptionError,
     transcribe,
-    recognizeOnline,
-  } = useBrowserWhisper();
+    prepare: prepareTranscriptionModel,
+  } = useBrowserKinyarwandaAsr();
   const recorderRef = useRef(null);
-  const onlineRecognitionRef = useRef(null);
   const voiceAssistantRef = useRef(null);
   const selectedProduct = products.find((product) => String(product.id) === String(selectedProductId));
   const quantityIsDiscrete = selectedProduct ? discreteProductUnits.has(selectedProduct.unit) : false;
@@ -113,7 +112,6 @@ export default function POS() {
   const handleVoiceCommand = async () => {
     if (recorderRef.current?.state === 'recording') {
       recorderRef.current.stop();
-      onlineRecognitionRef.current?.stop();
       return;
     }
 
@@ -122,15 +120,10 @@ export default function POS() {
       return;
     }
 
-    let onlineResultReady = false;
-    onlineRecognitionRef.current = recognizeOnline(() => {
-      onlineResultReady = true;
-      if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-    }, products.map((product) => product.name));
-
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      prepareTranscriptionModel();
       const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
         .find((type) => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -142,33 +135,20 @@ export default function POS() {
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
         recorderRef.current = null;
-        const onlineRecognition = onlineRecognitionRef.current;
-        onlineRecognitionRef.current = null;
         setRecording(false);
         const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
         if (!audio.size) return;
         setProcessingVoice(true);
         try {
-          const onlineTranscript = onlineRecognition ? await onlineRecognition.result : '';
-          let transcript = onlineTranscript
-            || await transcribe(audio, 'rw', products.map((product) => product.name));
+          const transcript = await transcribe(audio);
           setWhatsappLog((prev) => [...prev, { sender: 'user', text: transcript }]);
-          const sendVoiceCommand = async (text) => {
-            const response = await fetch(apiUrl('/api/voice/command'), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ text, mode: 'sell' }),
-            });
-            return { response, data: await response.json() };
-          };
-          let commandResult = await sendVoiceCommand(transcript);
-          if (onlineTranscript && commandResult.response.status === 422) {
-            transcript = await transcribe(audio, 'rw', products.map((product) => product.name));
-            setWhatsappLog((prev) => [...prev, { sender: 'user', text: transcript }]);
-            commandResult = await sendVoiceCommand(transcript);
-          }
-          const { response: commandResponse, data: commandData } = commandResult;
+          const commandResponse = await fetch(apiUrl('/api/voice/command'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ text: transcript, mode: 'sell' }),
+          });
+          const commandData = await commandResponse.json();
           if (!commandResponse.ok || !commandData.ok) throw new Error(commandData.message || t.voice.commandFailed);
           setWhatsappLog((prev) => [...prev, { sender: 'shop', text: commandData.response }]);
           await refreshShopData().catch((refreshError) => {
@@ -182,10 +162,7 @@ export default function POS() {
       };
       recorder.start();
       setRecording(true);
-      if (onlineResultReady) recorder.stop();
     } catch (error) {
-      onlineRecognitionRef.current?.stop();
-      onlineRecognitionRef.current = null;
       stream?.getTracks().forEach((track) => track.stop());
       setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || t.voice.micDenied }]);
     }
@@ -193,7 +170,6 @@ export default function POS() {
 
   useEffect(() => () => {
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-    onlineRecognitionRef.current?.stop();
   }, []);
 
   return (
@@ -324,7 +300,7 @@ export default function POS() {
               </button>
             </div>
 
-            {(transcriptionPhase === 'loading' || transcriptionPhase === 'decoding' || transcriptionPhase === 'transcribing' || transcriptionPhase === 'online') && (
+            {(transcriptionPhase === 'loading' || transcriptionPhase === 'decoding' || transcriptionPhase === 'transcribing') && (
               <div className={`mb-4 rounded-xl border p-3 text-xs ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`} role="status" aria-live="polite">
                 {transcriptionPhase === 'loading' ? (
                   <>
@@ -337,13 +313,14 @@ export default function POS() {
                   <p>
                     {transcriptionPhase === 'decoding'
                       ? t.voice.preparingAudio
-                      : transcriptionPhase === 'online'
-                        ? t.voice.onlineTranscribing
-                        : t.voice.transcribingInBrowser}
+                      : t.voice.transcribingInBrowser}
                   </p>
                 )}
               </div>
             )}
+            <p className={`mb-4 text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>
+              {t.voice.localModelNotice}
+            </p>
             {transcriptionError && <p className="mb-4 text-xs text-red-500" role="alert">{transcriptionError}</p>}
 
             {/* Chat Log */}

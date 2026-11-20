@@ -12,6 +12,7 @@
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "lucide-react": "^1.74.0",
+    "onnxruntime-web": "^1.31.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",

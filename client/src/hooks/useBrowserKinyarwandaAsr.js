@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 const TARGET_SAMPLE_RATE = 16_000;
 const listeners = new Set();
@@ -29,7 +29,9 @@ function getSnapshot() {
 function getWorker() {
   if (worker) return worker;
 
-  worker = new Worker(new URL('../workers/whisper.worker.js', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('../workers/kinyarwanda-asr.worker.js', import.meta.url), {
+    type: 'module',
+  });
   worker.onmessage = ({ data }) => {
     if (data.type === 'progress') {
       updateState({ phase: 'loading', progress: data.progress, error: '' });
@@ -39,7 +41,6 @@ function getWorker() {
       updateState({ phase: data.phase, error: '' });
       return;
     }
-    if (data.type === 'fallback') return;
     if (data.type === 'model-ready') {
       isModelReady = true;
       updateState({ progress: 100 });
@@ -69,7 +70,7 @@ function getWorker() {
     }
   };
   worker.onerror = (event) => {
-    const error = new Error(event.message || 'The browser transcription worker failed.');
+    const error = new Error(event.message || 'The Kinyarwanda transcription worker failed.');
     for (const pending of pendingRequests.values()) pending.reject(error);
     pendingRequests.clear();
     worker = undefined;
@@ -80,7 +81,7 @@ function getWorker() {
   return worker;
 }
 
-function preloadModel() {
+function prepareModel() {
   if (isModelReady || isPreloading) return;
   isPreloading = true;
   updateState({ phase: 'loading', progress: 0, error: '' });
@@ -117,25 +118,22 @@ async function decodeAudio(blob) {
   }
 }
 
-async function transcribeAudio(blob, language, productNames) {
+async function transcribeAudio(blob) {
   if (isTranscribing) throw new Error('A transcription is already in progress.');
   isTranscribing = true;
-  updateState({ phase: 'decoding', progress: isModelReady ? 100 : 0, error: '' });
+  updateState({ phase: 'decoding', progress: isModelReady ? 100 : state.progress, error: '' });
 
   try {
     const audio = await decodeAudio(blob);
     const workerInstance = getWorker();
     const id = `request-${++requestId}`;
-    updateState({ phase: isModelReady ? 'transcribing' : 'loading' });
+    updateState({ phase: isModelReady ? 'decoding' : 'loading' });
 
     const result = new Promise((resolve, reject) => {
       pendingRequests.set(id, { resolve, reject });
     });
     try {
-      workerInstance.postMessage(
-        { type: 'transcribe', requestId: id, audio, language, productNames },
-        [audio.buffer],
-      );
+      workerInstance.postMessage({ type: 'transcribe', requestId: id, audio }, [audio.buffer]);
     } catch (error) {
       pendingRequests.delete(id);
       throw error;
@@ -152,97 +150,10 @@ async function transcribeAudio(blob, language, productNames) {
   }
 }
 
-function startOnlineRecognition(onFinalTranscript, productNames = []) {
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Recognition) {
-    preloadModel();
-    return null;
-  }
-
-  let recognition;
-  try {
-    recognition = new Recognition();
-  } catch {
-    preloadModel();
-    return null;
-  }
-  recognition.lang = 'rw-RW';
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 3;
-  const SpeechRecognitionPhrase = window.SpeechRecognitionPhrase;
-  if (SpeechRecognitionPhrase && 'phrases' in recognition) {
-    const phrases = [
-      'Gurisha umuceri ibiro bibiri',
-      'Ongeraho stock isukari eshanu',
-      'Reba stock',
-      'Raporo y’uyu munsi',
-      ...productNames.flatMap((name) => [`Gurisha ${name}`, `Ongeraho stock ${name}`]),
-    ];
-    recognition.phrases = phrases.map((phrase) => new SpeechRecognitionPhrase(phrase, 8));
-  }
-
-  let finalTranscript = '';
-  let settled = false;
-  let resolveResult;
-  const result = new Promise((resolve) => {
-    resolveResult = resolve;
-  });
-  const finish = (text) => {
-    if (settled) return;
-    settled = true;
-    updateState({ phase: 'idle', error: '' });
-    resolveResult(text.trim());
-  };
-
-  recognition.onresult = (event) => {
-    finalTranscript = Array.from(event.results)
-      .filter((entry) => entry.isFinal)
-      .map((entry) => entry[0]?.transcript ?? '')
-      .join(' ')
-      .trim();
-    if (!finalTranscript) return;
-    onFinalTranscript?.();
-    recognition.stop();
-  };
-  recognition.onerror = () => {
-    finish('');
-    preloadModel();
-  };
-  recognition.onend = () => {
-    finish(finalTranscript);
-    if (!finalTranscript) preloadModel();
-  };
-
-  updateState({ phase: 'online', error: '' });
-  try {
-    recognition.start();
-  } catch {
-    finish('');
-    preloadModel();
-  }
-
-  return {
-    result,
-    stop: () => {
-      if (!settled) recognition.stop();
-    },
-  };
-}
-
-export default function useBrowserWhisper() {
+export default function useBrowserKinyarwandaAsr() {
   const transcriptionState = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const transcribe = useCallback((blob) => transcribeAudio(blob), []);
+  const prepare = useCallback(() => prepareModel(), []);
 
-  useEffect(() => {
-    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) preloadModel();
-  }, []);
-
-  const transcribe = useCallback(
-    (blob, language = 'rw', productNames = []) => transcribeAudio(blob, language, productNames),
-    [],
-  );
-
-  const recognizeOnline = startOnlineRecognition;
-
-  return { ...transcriptionState, transcribe, recognizeOnline };
+  return { ...transcriptionState, transcribe, prepare };
 }
