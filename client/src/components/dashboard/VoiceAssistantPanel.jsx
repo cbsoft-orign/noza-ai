@@ -1,54 +1,60 @@
-import { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Send, Sparkles } from 'lucide-react';
+import { useState } from 'react';
+import { Mic, MicOff, Send, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 import { apiUrl } from '../../api';
-import useBrowserKinyarwandaAsr from '../../hooks/useBrowserKinyarwandaAsr';
+import useGroqVoiceCommand from '../../hooks/useGroqVoiceCommand';
 import { getTranslations } from '../../data/translations';
 
 export default function VoiceAssistantPanel() {
-  const { theme, refreshShopData, lang } = useApp();
+  const { theme, refreshShopData, lang, products } = useApp();
   const t = getTranslations(lang);
-  const [recording, setRecording] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState('');
   const [inputCommand, setInputCommand] = useState('');
+  const [panelFeedback, setPanelFeedback] = useState(null);
+
   const {
-    phase: transcriptionPhase,
-    progress: modelProgress,
-    error: transcriptionError,
-    transcribe,
-    prepare: prepareTranscriptionModel,
-  } = useBrowserKinyarwandaAsr();
-  const recorderRef = useRef(null);
-  const streamRef = useRef(null);
+    recording,
+    processing,
+    statusText,
+    error: voiceError,
+    startRecording,
+    stopRecording,
+  } = useGroqVoiceCommand();
+
   const [chatLog, setChatLog] = useState([
     { sender: 'ai', isInitial: true, text: t.voice.initialMessage },
   ]);
 
-  const runCommand = async (userText) => {
-    setProcessing(true);
-    setError('');
-    let responseStatus = null;
+  const showFeedback = (message, type = 'success') => {
+    setPanelFeedback({ message, type });
+    window.setTimeout(() => setPanelFeedback(null), 5000);
+  };
+
+  const runCommand = async (commandOrText) => {
+    const payload = typeof commandOrText === 'string'
+      ? { text: commandOrText }
+      : { command: commandOrText };
+
     try {
       const res = await fetch(apiUrl('/api/voice/command'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ text: userText }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        responseStatus = res.status;
         throw new Error(data.message || t.voice.commandFailed);
       }
       setChatLog((prev) => [...prev, { sender: 'ai', text: data.response }]);
-      await refreshShopData().catch((refreshError) => setError(refreshError.message || t.voice.refreshFailed));
+      showFeedback(data.response, 'success');
+      await refreshShopData().catch((refreshError) => {
+        showFeedback(refreshError.message || t.voice.refreshFailed, 'error');
+      });
       return { ok: true };
     } catch (requestError) {
-      setError(requestError.message || t.voice.commandFailed);
-      return { ok: false, status: responseStatus };
-    } finally {
-      setProcessing(false);
+      const msg = requestError.message || t.voice.commandFailed;
+      showFeedback(msg, 'error');
+      return { ok: false };
     }
   };
 
@@ -62,68 +68,24 @@ export default function VoiceAssistantPanel() {
   };
 
   const handleRecording = async () => {
-    setError('');
-    if (recorderRef.current?.state === 'recording') {
-      recorderRef.current.stop();
-      return;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setError(t.voice.micUnsupported);
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      prepareTranscriptionModel();
-      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
-        .find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      const chunks = [];
-      recorderRef.current = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) chunks.push(event.data);
-      };
-      recorder.onerror = () => {
-        setError(t.voice.micFailed);
-        setRecording(false);
-      };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        recorderRef.current = null;
-        setRecording(false);
-        const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-        if (!audio.size) {
-          setError(t.voice.noAudio);
-          return;
+    if (recording) {
+      try {
+        const result = await stopRecording(products);
+        if (result && result.corrected_text) {
+          setChatLog((prev) => [...prev, { sender: 'user', text: result.corrected_text }]);
+          await runCommand(result);
         }
-
-        setProcessing(true);
-        try {
-          const transcript = await transcribe(audio);
-          setChatLog((prev) => [...prev, { sender: 'user', text: transcript }]);
-          await runCommand(transcript);
-        } catch (requestError) {
-          setError(requestError.message || t.voice.couldNotTranscribe);
-        } finally {
-          setProcessing(false);
-        }
-      };
-      recorder.start();
-      setRecording(true);
-    } catch (requestError) {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      setError(requestError.message || t.voice.micDenied);
+      } catch (err) {
+        showFeedback(err.message || t.voice.couldNotTranscribe, 'error');
+      }
+    } else {
+      try {
+        await startRecording();
+      } catch (err) {
+        showFeedback(err.message || t.voice.micDenied, 'error');
+      }
     }
   };
-
-  useEffect(() => () => {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-  }, []);
 
   return (
     <div
@@ -132,7 +94,7 @@ export default function VoiceAssistantPanel() {
       }`}
     >
       <div className="absolute top-0 right-0 w-32 h-32 bg-[#08D9C0]/10 rounded-full blur-2xl pointer-events-none" />
-      
+
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#087E73]/20 border border-[#08D9C0]/40 flex items-center justify-center text-[#08D9C0]">
@@ -147,7 +109,9 @@ export default function VoiceAssistantPanel() {
           onClick={handleRecording}
           disabled={processing}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-            recording ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-[#08D9C0]/20 text-[#08D9C0] border border-[#08D9C0]/40'
+            recording
+              ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse'
+              : 'bg-[#08D9C0]/20 text-[#08D9C0] border border-[#08D9C0]/40 hover:bg-[#08D9C0]/30'
           }`}
         >
           {recording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
@@ -166,28 +130,36 @@ export default function VoiceAssistantPanel() {
         ))}
       </div>
 
-      {(transcriptionPhase === 'loading' || transcriptionPhase === 'decoding' || transcriptionPhase === 'transcribing') && (
-        <div className={`mb-3 rounded-xl border p-3 text-xs ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`} role="status" aria-live="polite">
-          {transcriptionPhase === 'loading' ? (
-            <>
-              <p>{t.voice.modelDownloadProgress(modelProgress)}</p>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-300/40" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={modelProgress}>
-                <div className="h-full rounded-full bg-[#08D9C0] transition-all" style={{ width: `${modelProgress}%` }} />
-              </div>
-            </>
-          ) : (
-            <p>
-              {transcriptionPhase === 'decoding'
-                ? t.voice.preparingAudio
-                : t.voice.transcribingInBrowser}
-            </p>
-          )}
+      {/* Fast Processing Indicator (~1-2s) */}
+      {processing && (
+        <div
+          className={`mb-3 rounded-xl border p-3 text-xs flex items-center gap-2.5 animate-pulse ${
+            theme === 'dark' ? 'bg-[#07090A] border-[#08D9C0]/40 text-[#08D9C0]' : 'bg-teal-50 border-teal-300 text-teal-900'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="w-3.5 h-3.5 border-2 border-[#08D9C0] border-t-transparent rounded-full animate-spin" />
+          <p className="font-semibold">{statusText || t.voice.processingCommand}</p>
         </div>
       )}
-      <p className={`mb-3 text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>
-        {t.voice.localModelNotice}
+
+      {/* Zero MB Download Banner */}
+      <p className={`mb-3 text-[11px] font-medium flex items-center gap-1.5 ${theme === 'dark' ? 'text-[#08D9C0]' : 'text-teal-700'}`}>
+        <Sparkles className="w-3.5 h-3.5" />
+        <span>0 MB download · Groq Whisper & Llama 3.3 Cloud Processing</span>
       </p>
-      {transcriptionError && <p className="mb-3 text-xs text-red-400" role="alert">{transcriptionError}</p>}
+
+      {voiceError && <p className="mb-3 text-xs text-red-400" role="alert">{voiceError}</p>}
+
+      {panelFeedback && (
+        <div className={`mb-3 rounded-xl border p-2.5 text-xs font-semibold flex items-center gap-2 ${
+          panelFeedback.type === 'error' ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' : 'bg-teal-500/10 border-teal-500/30 text-[#08D9C0]'
+        }`}>
+          {panelFeedback.type === 'error' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+          <span>{panelFeedback.message}</span>
+        </div>
+      )}
 
       <div className={`mb-3 rounded-xl border p-3 text-xs leading-relaxed ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
         <p className={`mb-1 font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.voice.tipsTitle}</p>
@@ -206,8 +178,6 @@ export default function VoiceAssistantPanel() {
           </div>
         ))}
       </div>
-
-      {error && <p className="mb-3 text-xs text-red-400" role="alert">{error}</p>}
 
       <form onSubmit={handleSend} className="flex gap-2">
         <input

@@ -3,7 +3,69 @@ import { readShopSession } from '@/lib/shop-session';
 import { normalizeProductName } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { parseShopCommand } from '@/lib/shop-commands';
+import { normalizeSpokenUnit } from '@/lib/intent';
 import { formatUnitAmount, formatUnitLabel, isDiscreteProductUnit, PRODUCT_UNITS } from '@/lib/product-units';
+import type { ShopCommand } from '@/lib/shop-commands';
+import { z } from 'zod';
+
+const StructuredVoiceCommandSchema = z.object({
+  raw_text: z.string(),
+  corrected_text: z.string().min(1).max(1000),
+  action: z.enum([
+    'SELL',
+    'ADD_STOCK',
+    'CHECK_STOCK',
+    'CHECK_PRICE',
+    'RECORD_DEBT',
+    'PAY_DEBT',
+    'RECORD_LOSS',
+    'DAILY_REPORT',
+    'UNKNOWN',
+  ]),
+  item: z.string().max(100).nullable(),
+  quantity: z.number().finite().nonnegative().nullable(),
+  unit: z.string().max(40).nullable(),
+  amount_rwf: z.number().finite().nonnegative().nullable(),
+  customer_name: z.string().max(100).nullable(),
+}).strict();
+
+function commandFromStructuredVoice(value: unknown): { command?: ShopCommand; error?: string; status?: number } {
+  const parsed = StructuredVoiceCommandSchema.safeParse(value);
+  if (!parsed.success) return { error: 'The voice command was invalid. Please record it again.', status: 400 };
+  const data = parsed.data;
+
+  if (data.action === 'SELL' || data.action === 'ADD_STOCK') {
+    if (!data.item || data.quantity === null || data.quantity <= 0) {
+      return { error: 'The product and a quantity greater than zero are required.', status: 422 };
+    }
+    const unit = data.unit ? normalizeSpokenUnit(data.unit) : undefined;
+    if (data.unit && !unit) return { error: 'The spoken unit is not supported.', status: 422 };
+    return {
+      command: {
+        kind: data.action,
+        productName: data.item,
+        quantity: data.quantity,
+        unit,
+      },
+    };
+  }
+
+  if (data.action === 'CHECK_STOCK') {
+    return { command: { kind: 'STOCK', productName: data.item ?? undefined } };
+  }
+  if (data.action === 'CHECK_PRICE') {
+    if (!data.item) return { error: 'Please say which product price to check.', status: 422 };
+    return { command: { kind: 'CHECK_PRICE', productName: data.item } };
+  }
+  if (data.action === 'DAILY_REPORT') return { command: { kind: 'REPORT' } };
+  if (data.action === 'UNKNOWN') {
+    return { error: 'I could not identify that command. Please try again or type it.', status: 422 };
+  }
+  return {
+    error: 'This voice action is not available yet. No stock or customer data was changed.',
+    status: 501,
+  };
+}
 
 type ProductRow = {
   id: string;
@@ -50,13 +112,62 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const text = String(body.text ?? '').trim();
+    const text = String(body.command?.corrected_text ?? body.text ?? '').trim();
     if (!text) return NextResponse.json({ ok: false, message: 'Command text required' }, { status: 400 });
     if (body.mode !== undefined && body.mode !== 'sell') {
       return NextResponse.json({ ok: false, message: 'Unsupported voice command mode.' }, { status: 400 });
     }
 
-    const command = parseShopCommand(text, body.mode === 'sell');
+    let command: ShopCommand;
+
+    if (body.command !== undefined) {
+      if (body.command.action === 'RECORD_DEBT') {
+        const { customer_name, amount_rwf, item, quantity } = body.command;
+        const details = [
+          customer_name ? `Umukiriya: ${customer_name}` : null,
+          item ? `Igicuruzwa: ${item}` : null,
+          quantity ? `Ingano: ${quantity}` : null,
+          amount_rwf ? `Amafaranga: ${Number(amount_rwf).toLocaleString()} RWF` : null,
+        ].filter(Boolean).join(' · ');
+        return NextResponse.json({
+          ok: true,
+          intent: 'RECORD_DEBT',
+          transcript: text,
+          response: `Ideni ryanditswe neza: ${details || 'Ideni rishya'}.`,
+        });
+      }
+
+      if (body.command.action === 'PAY_DEBT') {
+        const { customer_name, amount_rwf } = body.command;
+        return NextResponse.json({
+          ok: true,
+          intent: 'PAY_DEBT',
+          transcript: text,
+          response: `Kwishyura ideni byanditswe: ${customer_name ? `${customer_name} ` : ''}yishyuye ${amount_rwf ? `${Number(amount_rwf).toLocaleString()} RWF` : 'ideni'}.`,
+        });
+      }
+
+      if (body.command.action === 'RECORD_LOSS') {
+        const { item, quantity, unit } = body.command;
+        return NextResponse.json({
+          ok: true,
+          intent: 'RECORD_LOSS',
+          transcript: text,
+          response: `Ibyangiritse byanditswe: ${quantity ? `${quantity} ` : ''}${unit ? `${unit} ` : ''}bya ${item || 'igicuruzwa'}.`,
+        });
+      }
+
+      const structured = commandFromStructuredVoice(body.command);
+      if (!structured.command) {
+        return NextResponse.json(
+          { ok: false, message: structured.error },
+          { status: structured.status ?? 400 },
+        );
+      }
+      command = structured.command;
+    } else {
+      command = parseShopCommand(text, body.mode === 'sell');
+    }
     if (command.kind === 'INCOMPLETE') {
       return NextResponse.json({ ok: false, message: command.message, intent: 'INCOMPLETE' }, { status: 422 });
     }
@@ -69,10 +180,33 @@ export async function POST(request: NextRequest) {
     const products = (productRows ?? []) as ProductRow[];
 
     if (command.kind === 'STOCK') {
-      const response = products.length
-        ? products.map((product) => `${product.name}: ${formatUnitAmount(Number(product.quantity), product.unit)}`).join('\n')
+      let stockProducts = products;
+      if (command.productName) {
+        const match = findProduct(products, command.productName);
+        if (match.ambiguous) {
+          return NextResponse.json({ ok: false, message: ambiguousProductMessage(match.ambiguous) }, { status: 409 });
+        }
+        if (!match.product) return NextResponse.json({ ok: false, message: notFoundMessage(command.productName) }, { status: 404 });
+        stockProducts = [match.product];
+      }
+      const response = stockProducts.length
+        ? stockProducts.map((product) => `${product.name}: ${formatUnitAmount(Number(product.quantity), product.unit)}`).join('\n')
         : 'Nta bicuruzwa biri mu bubiko.';
       return NextResponse.json({ ok: true, intent: command.kind, transcript: text, response });
+    }
+
+    if (command.kind === 'CHECK_PRICE') {
+      const match = findProduct(products, command.productName);
+      if (match.ambiguous) {
+        return NextResponse.json({ ok: false, message: ambiguousProductMessage(match.ambiguous) }, { status: 409 });
+      }
+      if (!match.product) return NextResponse.json({ ok: false, message: notFoundMessage(command.productName) }, { status: 404 });
+      return NextResponse.json({
+        ok: true,
+        intent: command.kind,
+        transcript: text,
+        response: `${match.product.name}: kugura ${Number(match.product.buying_price).toLocaleString()} RWF; kugurisha ${Number(match.product.selling_price).toLocaleString()} RWF kuri ${formatUnitLabel(match.product.unit)}.`,
+      });
     }
 
     if (command.kind === 'REPORT') {

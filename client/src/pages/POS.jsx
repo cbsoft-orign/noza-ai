@@ -1,14 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
-import { ShoppingCart, Mic, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
+import { ShoppingCart, Mic, MicOff, MessageSquare, Send, CheckCircle2, AlertCircle, Sparkles, Check, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useApp } from '../context/useApp';
 import { apiUrl } from '../api';
-import useBrowserKinyarwandaAsr from '../hooks/useBrowserKinyarwandaAsr';
+import useGroqVoiceCommand from '../hooks/useGroqVoiceCommand';
 import { discreteProductUnits, formatUnitAmount, formatUnitLabel } from '../data/productUnits';
 import { getTranslations } from '../data/translations';
 
+function normalizeName(str) {
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 export default function POS() {
-  const { products, recordSale, theme, refreshShopData, lang } = useApp();
+  const { products, recordSale, addStock, theme, refreshShopData, lang } = useApp();
   const t = getTranslations(lang);
   const location = useLocation();
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -16,22 +25,24 @@ export default function POS() {
   const [soldBy, setSoldBy] = useState('owner');
   const [successMsg, setSuccessMsg] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
+  const [feedbackToast, setFeedbackToast] = useState(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState(null);
 
   // Voice & WhatsApp simulator state
   const [whatsappText, setWhatsappText] = useState('Gurisha umuceri ibiro bibiri');
   const [whatsappLog, setWhatsappLog] = useState([
     { sender: 'shop', isInitial: true, text: t.pos.initialBotMsg },
   ]);
-  const [processingVoice, setProcessingVoice] = useState(false);
-  const [recording, setRecording] = useState(false);
+
   const {
-    phase: transcriptionPhase,
-    progress: modelProgress,
-    error: transcriptionError,
-    transcribe,
-    prepare: prepareTranscriptionModel,
-  } = useBrowserKinyarwandaAsr();
-  const recorderRef = useRef(null);
+    recording,
+    processing: processingVoice,
+    statusText: voiceStatusText,
+    error: voiceError,
+    startRecording,
+    stopRecording,
+  } = useGroqVoiceCommand();
+
   const voiceAssistantRef = useRef(null);
   const selectedProduct = products.find((product) => String(product.id) === String(selectedProductId));
   const quantityIsDiscrete = selectedProduct ? discreteProductUnits.has(selectedProduct.unit) : false;
@@ -56,6 +67,11 @@ export default function POS() {
         : String(products[0].id)
     ));
   }, [products]);
+
+  const showToast = (message, type = 'success') => {
+    setFeedbackToast({ message, type });
+    window.setTimeout(() => setFeedbackToast(null), 5000);
+  };
 
   const handleCheckout = async (e) => {
     e.preventDefault();
@@ -109,68 +125,196 @@ export default function POS() {
     }
   };
 
-  const handleVoiceCommand = async () => {
-    if (recorderRef.current?.state === 'recording') {
-      recorderRef.current.stop();
+  // Route structured JSON command from /api/transcribe to app action handlers
+  const routeVoiceCommand = async (command) => {
+    const { action, item, quantity: cmdQty, unit: cmdUnit, amount_rwf, customer_name, corrected_text } = command;
+
+    // Display the returned corrected_text in chat log
+    setWhatsappLog((prev) => [...prev, { sender: 'user', text: corrected_text }]);
+
+    // Find matched product in shop inventory
+    const matchedProduct = item
+      ? products.find((p) => {
+          const pName = normalizeName(p.name);
+          const iName = normalizeName(item);
+          return pName === iName || pName.includes(iName) || iName.includes(pName);
+        })
+      : null;
+
+    if (action === 'SELL') {
+      if (matchedProduct) {
+        setSelectedProductId(String(matchedProduct.id));
+        if (cmdQty && cmdQty > 0) setQuantity(cmdQty);
+
+        const qtyToSell = cmdQty && cmdQty > 0 ? cmdQty : 1;
+        const totalAmount = Number(matchedProduct.selling_price) * qtyToSell;
+
+        // Present confirmation step
+        setPendingConfirmation({
+          action: 'SELL',
+          title: lang === 'rw' ? 'Emeza Kugurisha' : 'Confirm Sale',
+          description: lang === 'rw'
+            ? `Kugurisha: ${qtyToSell} ${formatUnitLabel(cmdUnit || matchedProduct.unit, lang)} bya ${matchedProduct.name} (RWF ${totalAmount.toLocaleString()})`
+            : `Sell: ${qtyToSell} ${formatUnitLabel(cmdUnit || matchedProduct.unit, lang)} of ${matchedProduct.name} (RWF ${totalAmount.toLocaleString()})`,
+          onConfirm: async () => {
+            setPendingConfirmation(null);
+            try {
+              // Dispatch to backend command handler
+              const res = await fetch(apiUrl('/api/voice/command'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ command }),
+              });
+              const data = await res.json();
+              if (res.ok && data.ok) {
+                setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
+                showToast(data.response, 'success');
+              } else {
+                // Fallback to local recordSale handler
+                const ok = await recordSale(matchedProduct.id, qtyToSell, soldBy);
+                if (ok) {
+                  showToast(lang === 'rw' ? 'Byagurishijwe neza!' : 'Sale recorded successfully!', 'success');
+                  setWhatsappLog((prev) => [
+                    ...prev,
+                    { sender: 'shop', text: `Byagurishijwe: ${qtyToSell} ${matchedProduct.unit} bya ${matchedProduct.name}.` },
+                  ]);
+                }
+              }
+              await refreshShopData();
+            } catch (err) {
+              showToast(err.message || 'Failed to record sale', 'error');
+            }
+          },
+          onCancel: () => {
+            setPendingConfirmation(null);
+            showToast(lang === 'rw' ? 'Kugurisha byahagaritswe' : 'Sale cancelled', 'info');
+          },
+        });
+      } else {
+        showToast(
+          lang === 'rw' ? `Ntabwo mbona "${item || 'igicuruzwa'}" mu bubiko.` : `Product "${item || 'item'}" not found in stock.`,
+          'error',
+        );
+      }
       return;
     }
 
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: t.voice.micUnsupported }]);
+    if (action === 'ADD_STOCK') {
+      if (matchedProduct) {
+        const qtyToAdd = cmdQty && cmdQty > 0 ? cmdQty : 1;
+        setPendingConfirmation({
+          action: 'ADD_STOCK',
+          title: lang === 'rw' ? 'Emeza Kongera Ububiko' : 'Confirm Restock',
+          description: lang === 'rw'
+            ? `Kongeraho: +${qtyToAdd} ${formatUnitLabel(cmdUnit || matchedProduct.unit, lang)} kuri ${matchedProduct.name}`
+            : `Restock: +${qtyToAdd} ${formatUnitLabel(cmdUnit || matchedProduct.unit, lang)} to ${matchedProduct.name}`,
+          onConfirm: async () => {
+            setPendingConfirmation(null);
+            try {
+              const res = await fetch(apiUrl('/api/voice/command'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ command }),
+              });
+              const data = await res.json();
+              if (res.ok && data.ok) {
+                setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
+                showToast(data.response, 'success');
+              } else {
+                const ok = await addStock(matchedProduct.id, qtyToAdd);
+                if (ok) {
+                  showToast(lang === 'rw' ? 'Stock yongerewe neza!' : 'Stock updated successfully!', 'success');
+                }
+              }
+              await refreshShopData();
+            } catch (err) {
+              showToast(err.message || 'Failed to update stock', 'error');
+            }
+          },
+          onCancel: () => {
+            setPendingConfirmation(null);
+            showToast(lang === 'rw' ? 'Kongera stock byahagaritswe' : 'Restock cancelled', 'info');
+          },
+        });
+      } else {
+        showToast(
+          lang === 'rw' ? `Ntabwo mbona "${item || 'igicuruzwa'}" mu bubiko.` : `Product "${item || 'item'}" not found in stock.`,
+          'error',
+        );
+      }
       return;
     }
 
-    let stream;
+    // Pass CHECK_STOCK, CHECK_PRICE, DAILY_REPORT, RECORD_DEBT, PAY_DEBT, RECORD_LOSS to server
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      prepareTranscriptionModel();
-      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
-        .find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      const chunks = [];
-      recorderRef.current = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) chunks.push(event.data);
-      };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        recorderRef.current = null;
-        setRecording(false);
-        const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-        if (!audio.size) return;
-        setProcessingVoice(true);
-        try {
-          const transcript = await transcribe(audio);
-          setWhatsappLog((prev) => [...prev, { sender: 'user', text: transcript }]);
-          const commandResponse = await fetch(apiUrl('/api/voice/command'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ text: transcript, mode: 'sell' }),
-          });
-          const commandData = await commandResponse.json();
-          if (!commandResponse.ok || !commandData.ok) throw new Error(commandData.message || t.voice.commandFailed);
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: commandData.response }]);
-          await refreshShopData().catch((refreshError) => {
-            setWhatsappLog((prev) => [...prev, { sender: 'shop', text: refreshError.message || t.voice.refreshFailed }]);
-          });
-        } catch (error) {
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || t.voice.commandFailed }]);
-        } finally {
-          setProcessingVoice(false);
+      const res = await fetch(apiUrl('/api/voice/command'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ command }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
+        showToast(data.response, 'success');
+      } else {
+        // Construct clear UI toast based on action
+        if (action === 'CHECK_STOCK') {
+          const text = matchedProduct
+            ? `${matchedProduct.name}: ${formatUnitAmount(matchedProduct.quantity, matchedProduct.unit, lang)} in stock.`
+            : 'Could not find product stock.';
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
+          showToast(text, 'info');
+        } else if (action === 'CHECK_PRICE') {
+          const text = matchedProduct
+            ? `${matchedProduct.name}: RWF ${Number(matchedProduct.selling_price).toLocaleString()} / ${formatUnitLabel(matchedProduct.unit, lang)}`
+            : 'Could not find product price.';
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
+          showToast(text, 'info');
+        } else if (action === 'RECORD_DEBT') {
+          const text = `Ideni ryanditswe: ${customer_name || 'Umukiriya'} - ${amount_rwf ? `${amount_rwf.toLocaleString()} RWF` : item || ''}`;
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
+          showToast(text, 'info');
+        } else if (action === 'PAY_DEBT') {
+          const text = `Kwishyura ideni: ${customer_name || 'Umukiriya'} yishyuye ${amount_rwf ? `${amount_rwf.toLocaleString()} RWF` : ''}`;
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
+          showToast(text, 'info');
+        } else if (action === 'RECORD_LOSS') {
+          const text = `Ibyangiritse byanditswe: ${cmdQty || ''} ${cmdUnit || ''} ${item || ''}`;
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
+          showToast(text, 'info');
+        } else {
+          const fallback = data?.message || t.voice.commandFailed;
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: fallback }]);
+          showToast(fallback, 'error');
         }
-      };
-      recorder.start();
-      setRecording(true);
-    } catch (error) {
-      stream?.getTracks().forEach((track) => track.stop());
-      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: error.message || t.voice.micDenied }]);
+      }
+    } catch (err) {
+      setWhatsappLog((prev) => [...prev, { sender: 'shop', text: err.message || t.voice.commandFailed }]);
+      showToast(err.message || t.voice.commandFailed, 'error');
     }
   };
 
-  useEffect(() => () => {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-  }, []);
+  const handleVoiceCommand = async () => {
+    if (recording) {
+      try {
+        const result = await stopRecording(products);
+        if (result && result.corrected_text) {
+          await routeVoiceCommand(result);
+        }
+      } catch (err) {
+        showToast(err.message || t.voice.couldNotTranscribe, 'error');
+      }
+    } else {
+      try {
+        await startRecording();
+      } catch (err) {
+        showToast(err.message || t.voice.micDenied, 'error');
+      }
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -183,6 +327,22 @@ export default function POS() {
         <div className="p-4 rounded-2xl bg-[#087E73]/20 border border-[#08D9C0] text-[#08D9C0] font-semibold text-sm flex items-center gap-2 animate-fadeIn">
           <CheckCircle2 className="w-5 h-5" />
           <span>{successMsg}</span>
+        </div>
+      )}
+
+      {feedbackToast && (
+        <div
+          className={`p-4 rounded-2xl border text-sm font-semibold flex items-center gap-3 animate-fadeIn ${
+            feedbackToast.type === 'error'
+              ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+              : feedbackToast.type === 'info'
+              ? 'bg-sky-500/20 border-sky-500/40 text-sky-300'
+              : 'bg-[#087E73]/20 border-[#08D9C0] text-[#08D9C0]'
+          }`}
+          role="status"
+        >
+          {feedbackToast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+          <span>{feedbackToast.message}</span>
         </div>
       )}
 
@@ -276,10 +436,10 @@ export default function POS() {
         <div
           id="voice-assistant"
           ref={voiceAssistantRef}
-          className={`border rounded-3xl p-6 flex flex-col justify-between shadow-sm ${theme === 'dark' ? 'bg-[#101516] border-[#202829]' : 'bg-white border-slate-200'}`}
+          className={`border rounded-3xl p-6 flex flex-col justify-between shadow-sm relative ${theme === 'dark' ? 'bg-[#101516] border-[#202829]' : 'bg-white border-slate-200'}`}
         >
           <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-[#087E73]/20 border border-[#08D9C0]/30 flex items-center justify-center text-[#08D9C0]">
                   <MessageSquare className="w-5 h-5" />
@@ -293,35 +453,91 @@ export default function POS() {
                 type="button"
                 onClick={handleVoiceCommand}
                 disabled={processingVoice}
-                className="px-3.5 py-2 rounded-xl bg-[#087E73]/20 border border-[#08D9C0]/40 text-xs font-bold text-[#08D9C0] hover:bg-[#087E73]/40 transition flex items-center gap-1.5"
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  recording
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/50 animate-pulse'
+                    : 'bg-[#087E73]/20 border border-[#08D9C0]/40 text-[#08D9C0] hover:bg-[#087E73]/40'
+                }`}
               >
-                <Mic className="w-4 h-4 animate-pulse" />
-                <span>{processingVoice ? t.common.processing : recording ? t.common.stopRecording : t.pos.speakCommand}</span>
+                {recording ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 animate-pulse" />}
+                <span>
+                  {processingVoice
+                    ? t.common.processing
+                    : recording
+                    ? t.common.stopRecording
+                    : t.pos.speakCommand}
+                </span>
               </button>
             </div>
 
-            {(transcriptionPhase === 'loading' || transcriptionPhase === 'decoding' || transcriptionPhase === 'transcribing') && (
-              <div className={`mb-4 rounded-xl border p-3 text-xs ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`} role="status" aria-live="polite">
-                {transcriptionPhase === 'loading' ? (
-                  <>
-                    <p>{t.voice.modelDownloadProgress(modelProgress)}</p>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-300/40" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={modelProgress}>
-                      <div className="h-full rounded-full bg-[#08D9C0] transition-all" style={{ width: `${modelProgress}%` }} />
-                    </div>
-                  </>
-                ) : (
-                  <p>
-                    {transcriptionPhase === 'decoding'
-                      ? t.voice.preparingAudio
-                      : t.voice.transcribingInBrowser}
-                  </p>
-                )}
+            {/* Zero MB Download Badge */}
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
+                theme === 'dark' ? 'bg-[#087E73]/10 text-[#08D9C0] border-[#08D9C0]/30' : 'bg-teal-50 text-teal-800 border-teal-200'
+              }`}>
+                <Sparkles className="w-3 h-3" />
+                <span>0 MB Download · Groq Whisper & Llama 3.3</span>
+              </span>
+            </div>
+
+            {/* Processing Indicator (~1-2 seconds with cold-start reassurance) */}
+            {processingVoice && (
+              <div
+                className={`mb-4 rounded-xl border p-3 text-xs flex items-center gap-3 animate-pulse ${
+                  theme === 'dark' ? 'bg-[#07090A] border-[#08D9C0]/40 text-[#08D9C0]' : 'bg-teal-50 border-teal-300 text-teal-900'
+                }`}
+                role="status"
+                aria-live="polite"
+              >
+                <div className="w-4 h-4 border-2 border-[#08D9C0] border-t-transparent rounded-full animate-spin" />
+                <p className="font-semibold">{voiceStatusText || t.voice.processingCommand}</p>
               </div>
             )}
-            <p className={`mb-4 text-xs ${theme === 'dark' ? 'text-[#B4BABB]' : 'text-slate-500'}`}>
-              {t.voice.localModelNotice}
-            </p>
-            {transcriptionError && <p className="mb-4 text-xs text-red-500" role="alert">{transcriptionError}</p>}
+
+            {voiceError && (
+              <div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400" role="alert">
+                {voiceError}
+              </div>
+            )}
+
+            {/* Pending Voice Action Confirmation Step */}
+            {pendingConfirmation && (
+              <div className={`mb-4 rounded-2xl border p-4 shadow-lg animate-fadeIn ${
+                theme === 'dark' ? 'bg-[#141F20] border-[#08D9C0]/50' : 'bg-teal-50 border-teal-300'
+              }`}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h4 className={`text-xs font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-[#08D9C0]' : 'text-teal-900'}`}>
+                    {pendingConfirmation.title}
+                  </h4>
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#08D9C0]/20 text-[#08D9C0]">
+                    Voice Action
+                  </span>
+                </div>
+                <p className={`text-sm mb-3 font-medium ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                  {pendingConfirmation.description}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={pendingConfirmation.onConfirm}
+                    className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-[#087E73] to-[#08D9C0] text-black font-bold text-xs hover:opacity-95 transition flex items-center justify-center gap-1"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{t.voice.confirmAction || 'Confirm'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={pendingConfirmation.onCancel}
+                    className={`py-2 px-3 rounded-xl border text-xs font-semibold transition flex items-center justify-center gap-1 ${
+                      theme === 'dark' ? 'border-[#202829] text-slate-300 hover:bg-[#07090A]' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>{t.voice.cancelAction || 'Cancel'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Chat Log */}
             <div className={`h-[220px] overflow-y-auto rounded-2xl p-4 space-y-3 mb-4 border ${theme === 'dark' ? 'bg-[#07090A] border-[#202829]' : 'bg-slate-50 border-slate-200'}`}>
@@ -333,6 +549,7 @@ export default function POS() {
                 </div>
               ))}
             </div>
+
             <div className={`mb-4 rounded-xl border p-3 text-xs leading-relaxed ${theme === 'dark' ? 'bg-[#07090A] border-[#202829] text-[#B4BABB]' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
               <p className={`mb-1 font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t.pos.examplesTitle}</p>
               <p><strong>{t.pos.example1}</strong> · <strong>{t.pos.example2}</strong></p>

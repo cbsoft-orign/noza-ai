@@ -4,7 +4,9 @@ import { suggestProductUnit, type ProductUnit } from '@/lib/product-units';
 type PriceField = 'buying' | 'selling';
 
 export type ShopCommand =
-  | { kind: 'STOCK' | 'REPORT' | 'UNKNOWN' }
+  | { kind: 'STOCK'; productName?: string }
+  | { kind: 'CHECK_PRICE'; productName: string }
+  | { kind: 'REPORT' | 'UNKNOWN' }
   | { kind: 'SELL' | 'ADD_STOCK'; productName: string; quantity: number; unit?: ProductUnit }
   | {
       kind: 'CREATE_PRODUCT';
