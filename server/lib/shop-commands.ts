@@ -116,6 +116,30 @@ function parsePriceUpdate(text: string): ShopCommand | undefined {
   return { kind: 'UPDATE_PRICES', productName, buyingPrice, sellingPrice };
 }
 
+export { cleanProductName, extractPrice };
+
+function parseCheckPrice(text: string): ShopCommand | undefined {
+  if (!/(?:igiciro|ibiciro|bigura\s+angahe|ugura\s+angahe|how\s+much|price)/i.test(text)) return undefined;
+  if (BUYING_PRICE_LABEL.test(text) || SELLING_PRICE_LABEL.test(text)) {
+    // Might be UPDATE_PRICES, handled elsewhere
+    return undefined;
+  }
+  const match = /(?:igiciro\s+(?:cy'|cya\s+|cyo\s+)?|bigura\s+angahe\s+(?:kuri\s+)?|ugura\s+angahe\s+)?([a-zA-ZÀ-ÿ0-9'\s-]+?)(?:\s+ni\s+angahe|\s+ugura\s+angahe|\s+bigura\s+angahe|\?|$)/i.exec(text)
+    || /(?:reba\s+)?igiciro\s+(?:cy'|cya\s+|cyo\s+)?([a-zA-ZÀ-ÿ0-9'\s-]+)/i.exec(text)
+    || /(?:price\s+of|how\s+much\s+is)\s+([a-zA-ZÀ-ÿ0-9'\s-]+)/i.exec(text);
+  if (!match) return undefined;
+  const productName = cleanProductName(match[1]);
+  if (!productName) return undefined;
+  return { kind: 'CHECK_PRICE', productName };
+}
+
+function parseCheckStock(text: string): ShopCommand | undefined {
+  if (!/(?:stock|ububiko|hasigaye|ese\s+dufite)/i.test(text)) return undefined;
+  const match = /(?:stock\s+(?:y'|ya\s+|cy'|cya\s+)?|hasigaye\s+|ese\s+dufite\s+)([a-zA-ZÀ-ÿ0-9'\s-]+?)(?:\s+angahe|\s+zingahe|\s+yingahe|\?|$)/i.exec(text);
+  const productName = match ? cleanProductName(match[1]) : undefined;
+  return { kind: 'STOCK', productName: productName || undefined };
+}
+
 export function parseShopCommand(text: string, allowImplicitSale = false): ShopCommand {
   const value = text.trim();
   if (!value) return { kind: 'UNKNOWN' };
@@ -125,6 +149,12 @@ export function parseShopCommand(text: string, allowImplicitSale = false): ShopC
 
   const priceUpdate = parsePriceUpdate(value);
   if (priceUpdate) return priceUpdate;
+
+  const checkPrice = parseCheckPrice(value);
+  if (checkPrice) return checkPrice;
+
+  const checkStock = parseCheckStock(value);
+  if (checkStock) return checkStock;
 
   const detected = detectIntent(value);
   if (detected.intent === 'STOCK') return { kind: 'STOCK' };

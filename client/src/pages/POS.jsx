@@ -228,7 +228,7 @@ export default function POS() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ command }),
+                body: JSON.stringify({ command, text: corrected_text }),
               });
               const data = await res.json();
               if (res.ok && data.ok) {
@@ -257,11 +257,29 @@ export default function POS() {
             showToast(lang === 'rw' ? 'Kugurisha byahagaritswe' : 'Sale cancelled', 'info');
           },
         });
-      } else {
-        showToast(
-          lang === 'rw' ? `Ntabwo mbona "${item || 'igicuruzwa'}" mu bubiko.` : `Product "${item || 'item'}" not found in stock.`,
-          'error'
-        );
+        return;
+      }
+
+      // If matchedProduct is not found locally, route directly to backend command runner (handles DB products & bulk 1x2)
+      try {
+        const res = await fetch(apiUrl('/api/voice/command'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ command, text: corrected_text }),
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
+          showToast(data.response, 'success');
+          await refreshShopData();
+        } else {
+          const msg = data.message || (lang === 'rw' ? `Ntabwo mbona "${item || 'igicuruzwa'}" mu bubiko.` : `Product "${item || 'item'}" not found in stock.`);
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: msg }]);
+          showToast(msg, 'error');
+        }
+      } catch (err) {
+        showToast(err.message || 'Failed to process sale command', 'error');
       }
       return;
     }
@@ -283,7 +301,7 @@ export default function POS() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ command }),
+                body: JSON.stringify({ command, text: corrected_text }),
               });
               const data = await res.json();
               if (res.ok && data.ok) {
@@ -305,11 +323,29 @@ export default function POS() {
             showToast(lang === 'rw' ? 'Kongera stock byahagaritswe' : 'Restock cancelled', 'info');
           },
         });
-      } else {
-        showToast(
-          lang === 'rw' ? `Ntabwo mbona "${item || 'igicuruzwa'}" mu bubiko.` : `Product "${item || 'item'}" not found in stock.`,
-          'error'
-        );
+        return;
+      }
+
+      // If matchedProduct not found locally, route directly to backend command runner
+      try {
+        const res = await fetch(apiUrl('/api/voice/command'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ command, text: corrected_text }),
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
+          showToast(data.response, 'success');
+          await refreshShopData();
+        } else {
+          const msg = data.message || (lang === 'rw' ? `Ntabwo mbona "${item || 'igicuruzwa'}" mu bubiko.` : `Product "${item || 'item'}" not found in stock.`);
+          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: msg }]);
+          showToast(msg, 'error');
+        }
+      } catch (err) {
+        showToast(err.message || 'Failed to update stock', 'error');
       }
       return;
     }
@@ -319,42 +355,19 @@ export default function POS() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ command }),
+        body: JSON.stringify({ command, text: corrected_text }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
         setWhatsappLog((prev) => [...prev, { sender: 'shop', text: data.response }]);
         showToast(data.response, 'success');
-      } else {
-        if (action === 'CHECK_STOCK') {
-          const text = matchedProduct
-            ? `${matchedProduct.name}: ${formatUnitAmount(matchedProduct.quantity, matchedProduct.unit, lang)} in stock.`
-            : 'Could not find product stock.';
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
-          showToast(text, 'info');
-        } else if (action === 'CHECK_PRICE') {
-          const text = matchedProduct
-            ? `${matchedProduct.name}: RWF ${Number(matchedProduct.selling_price).toLocaleString()} / ${formatUnitLabel(matchedProduct.unit, lang)}`
-            : 'Could not find product price.';
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
-          showToast(text, 'info');
-        } else if (action === 'RECORD_DEBT') {
-          const text = `Ideni ryanditswe: ${customer_name || 'Umukiriya'} - ${amount_rwf ? `${amount_rwf.toLocaleString()} RWF` : item || ''}`;
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
-          showToast(text, 'info');
-        } else if (action === 'PAY_DEBT') {
-          const text = `Kwishyura ideni: ${customer_name || 'Umukiriya'} yishyuye ${amount_rwf ? `${amount_rwf.toLocaleString()} RWF` : ''}`;
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
-          showToast(text, 'info');
-        } else if (action === 'RECORD_LOSS') {
-          const text = `Ibyangiritse byanditswe: ${cmdQty || ''} ${cmdUnit || ''} ${item || ''}`;
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text }]);
-          showToast(text, 'info');
-        } else {
-          const fallback = data?.message || t.voice.commandFailed;
-          setWhatsappLog((prev) => [...prev, { sender: 'shop', text: fallback }]);
-          showToast(fallback, 'error');
+        if (['SELL', 'ADD_STOCK', 'CREATE_PRODUCT', 'UPDATE_PRICES'].includes(data.intent)) {
+          await refreshShopData();
         }
+      } else {
+        const fallback = data?.message || t.voice.commandFailed;
+        setWhatsappLog((prev) => [...prev, { sender: 'shop', text: fallback }]);
+        showToast(fallback, 'error');
       }
     } catch (err) {
       setWhatsappLog((prev) => [...prev, { sender: 'shop', text: err.message || t.voice.commandFailed }]);

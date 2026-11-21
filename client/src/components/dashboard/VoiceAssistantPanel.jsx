@@ -32,7 +32,10 @@ export default function VoiceAssistantPanel() {
   const runCommand = async (commandOrText) => {
     const payload = typeof commandOrText === 'string'
       ? { text: commandOrText }
-      : { command: commandOrText };
+      : {
+          command: commandOrText,
+          text: commandOrText.corrected_text || commandOrText.raw_text || '',
+        };
 
     try {
       const res = await fetch(apiUrl('/api/voice/command'), {

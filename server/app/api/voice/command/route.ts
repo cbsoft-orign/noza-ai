@@ -4,66 +4,117 @@ import { normalizeProductName } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { parseShopCommand } from '@/lib/shop-commands';
 import { normalizeSpokenUnit } from '@/lib/intent';
-import { formatUnitAmount, formatUnitLabel, isDiscreteProductUnit, PRODUCT_UNITS } from '@/lib/product-units';
+import { formatUnitAmount, formatUnitLabel, isDiscreteProductUnit, suggestProductUnit, PRODUCT_UNITS } from '@/lib/product-units';
 import type { ShopCommand } from '@/lib/shop-commands';
 import { z } from 'zod';
 
 const StructuredVoiceCommandSchema = z.object({
-  raw_text: z.string(),
-  corrected_text: z.string().min(1).max(1000),
+  raw_text: z.string().optional(),
+  corrected_text: z.string().min(1).max(1000).optional(),
   action: z.enum([
     'SELL',
     'ADD_STOCK',
     'CHECK_STOCK',
     'CHECK_PRICE',
+    'CREATE_PRODUCT',
+    'UPDATE_PRICES',
     'RECORD_DEBT',
     'PAY_DEBT',
     'RECORD_LOSS',
     'DAILY_REPORT',
     'UNKNOWN',
   ]),
-  item: z.string().max(100).nullable(),
-  quantity: z.number().finite().nonnegative().nullable(),
-  unit: z.string().max(40).nullable(),
-  amount_rwf: z.number().finite().nonnegative().nullable(),
-  customer_name: z.string().max(100).nullable(),
-}).strict();
+  item: z.string().max(100).nullable().optional(),
+  quantity: z.number().finite().nonnegative().nullable().optional(),
+  unit: z.string().max(40).nullable().optional(),
+  amount_rwf: z.number().finite().nonnegative().nullable().optional(),
+  customer_name: z.string().max(100).nullable().optional(),
+  buying_price: z.number().finite().nonnegative().nullable().optional(),
+  selling_price: z.number().finite().nonnegative().nullable().optional(),
+}).passthrough();
 
-function commandFromStructuredVoice(value: unknown): { command?: ShopCommand; error?: string; status?: number } {
+function commandFromStructuredVoice(value: unknown, fallbackText = ''): { command?: ShopCommand; error?: string; status?: number } {
   const parsed = StructuredVoiceCommandSchema.safeParse(value);
   if (!parsed.success) return { error: 'The voice command was invalid. Please record it again.', status: 400 };
   const data = parsed.data;
 
-  if (data.action === 'SELL' || data.action === 'ADD_STOCK') {
-    if (!data.item || data.quantity === null || data.quantity <= 0) {
-      return { error: 'The product and a quantity greater than zero are required.', status: 422 };
+  if (data.action === 'CREATE_PRODUCT') {
+    const name = data.item;
+    const buyingPrice = data.buying_price;
+    const sellingPrice = data.selling_price;
+    const rawUnit = data.unit ? normalizeSpokenUnit(data.unit) : undefined;
+    const unit = rawUnit ?? (name ? suggestProductUnit(name) : 'piece');
+    const quantity = data.quantity ?? 0;
+
+    if (name && buyingPrice !== undefined && sellingPrice !== undefined && buyingPrice !== null && sellingPrice !== null) {
+      return {
+        command: {
+          kind: 'CREATE_PRODUCT',
+          name,
+          unit,
+          quantity,
+          buyingPrice,
+          sellingPrice,
+        },
+      };
     }
-    const unit = data.unit ? normalizeSpokenUnit(data.unit) : undefined;
-    if (data.unit && !unit) return { error: 'The spoken unit is not supported.', status: 422 };
-    return {
-      command: {
-        kind: data.action,
-        productName: data.item,
-        quantity: data.quantity,
-        unit,
-      },
-    };
+  }
+
+  if (data.action === 'UPDATE_PRICES') {
+    const productName = data.item;
+    if (productName && (data.buying_price !== undefined || data.selling_price !== undefined)) {
+      return {
+        command: {
+          kind: 'UPDATE_PRICES',
+          productName,
+          buyingPrice: data.buying_price ?? undefined,
+          sellingPrice: data.selling_price ?? undefined,
+        },
+      };
+    }
+  }
+
+  if (data.action === 'SELL' || data.action === 'ADD_STOCK') {
+    if (data.item && data.quantity !== undefined && data.quantity !== null && data.quantity > 0) {
+      const unit = data.unit ? normalizeSpokenUnit(data.unit) : undefined;
+      if (data.unit && !unit) return { error: 'The spoken unit is not supported.', status: 422 };
+      return {
+        command: {
+          kind: data.action,
+          productName: data.item,
+          quantity: data.quantity,
+          unit,
+        },
+      };
+    }
   }
 
   if (data.action === 'CHECK_STOCK') {
     return { command: { kind: 'STOCK', productName: data.item ?? undefined } };
   }
+
   if (data.action === 'CHECK_PRICE') {
-    if (!data.item) return { error: 'Please say which product price to check.', status: 422 };
-    return { command: { kind: 'CHECK_PRICE', productName: data.item } };
+    if (data.item) {
+      return { command: { kind: 'CHECK_PRICE', productName: data.item } };
+    }
   }
-  if (data.action === 'DAILY_REPORT') return { command: { kind: 'REPORT' } };
-  if (data.action === 'UNKNOWN') {
-    return { error: 'I could not identify that command. Please try again or type it.', status: 422 };
+
+  if (data.action === 'DAILY_REPORT') {
+    return { command: { kind: 'REPORT' } };
   }
+
+  // Fallback to text parsing if structured voice extraction was incomplete or UNKNOWN
+  const textToEvaluate = (data.corrected_text || fallbackText).trim();
+  if (textToEvaluate) {
+    const parsedText = parseShopCommand(textToEvaluate, true);
+    if (parsedText.kind !== 'UNKNOWN') {
+      return { command: parsedText };
+    }
+  }
+
   return {
-    error: 'This voice action is not available yet. No stock or customer data was changed.',
-    status: 501,
+    error: 'I could not identify that command. Please try again or type it.',
+    status: 422,
   };
 }
 
@@ -157,16 +208,22 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const structured = commandFromStructuredVoice(body.command);
-      if (!structured.command) {
-        return NextResponse.json(
-          { ok: false, message: structured.error },
-          { status: structured.status ?? 400 },
-        );
+      const structured = commandFromStructuredVoice(body.command, text);
+      if (structured.command) {
+        command = structured.command;
+      } else {
+        const fallbackParsed = parseShopCommand(text, true);
+        if (fallbackParsed.kind !== 'UNKNOWN') {
+          command = fallbackParsed;
+        } else {
+          return NextResponse.json(
+            { ok: false, message: structured.error || 'I could not identify that command. Please try again or type it.' },
+            { status: structured.status ?? 422 },
+          );
+        }
       }
-      command = structured.command;
     } else {
-      command = parseShopCommand(text, body.mode === 'sell');
+      command = parseShopCommand(text, body.mode === 'sell' || true);
     }
     if (command.kind === 'INCOMPLETE') {
       return NextResponse.json({ ok: false, message: command.message, intent: 'INCOMPLETE' }, { status: 422 });

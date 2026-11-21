@@ -14,6 +14,8 @@ const ACTIONS = [
   'ADD_STOCK',
   'CHECK_STOCK',
   'CHECK_PRICE',
+  'CREATE_PRODUCT',
+  'UPDATE_PRICES',
   'RECORD_DEBT',
   'PAY_DEBT',
   'RECORD_LOSS',
@@ -25,12 +27,14 @@ const AudioCommandSchema = z.object({
   raw_text: z.string(),
   corrected_text: z.string(),
   action: z.enum(ACTIONS),
-  item: z.string().nullable(),
-  quantity: z.number().finite().nonnegative().nullable(),
-  unit: z.string().nullable(),
-  amount_rwf: z.number().finite().nonnegative().nullable(),
-  customer_name: z.string().nullable(),
-}).strict();
+  item: z.string().nullable().optional(),
+  quantity: z.number().finite().nonnegative().nullable().optional(),
+  unit: z.string().nullable().optional(),
+  amount_rwf: z.number().finite().nonnegative().nullable().optional(),
+  customer_name: z.string().nullable().optional(),
+  buying_price: z.number().finite().nonnegative().nullable().optional(),
+  selling_price: z.number().finite().nonnegative().nullable().optional(),
+}).passthrough();
 
 const ACCEPTED_AUDIO_TYPES = new Set([
   'audio/webm',
@@ -153,7 +157,7 @@ function buildWhisperPrompt(inventory: string[]): string {
   const inventoryString = top15.length > 0 ? top15.join(', ') + '.' : '';
 
   let prompt = [
-    "Gurisha, ongera, shyiramo, kura muri stock, reba stock, hasigaye angahe, igiciro ni angahe, ideni, yishyuye, raporo y'umunsi, byangiritse.",
+    "Kora igicuruzwa, hindura igiciro, gurisha, ongera, shyiramo, kura muri stock, reba stock, hasigaye angahe, igiciro ni angahe, ideni, yishyuye, raporo y'umunsi, byangiritse.",
     inventoryString,
     'Ikiro kimwe, ibiro bibiri, bitatu, bine, bitanu, icumi, litiro imwe, ikarito, ipaki, icupa, agafuka, carton, sachet.',
     'Amafaranga magana atanu, igihumbi, ibihumbi bibiri, bitanu, icumi.',
@@ -170,7 +174,7 @@ function buildWhisperPrompt(inventory: string[]): string {
       trimmed.pop();
       const subInv = trimmed.length > 0 ? trimmed.join(', ') + '.' : '';
       const candidate = [
-        "Gurisha, ongera, shyiramo, kura muri stock, reba stock, hasigaye angahe, igiciro ni angahe, ideni, yishyuye, raporo y'umunsi, byangiritse.",
+        "Kora igicuruzwa, hindura igiciro, gurisha, ongera, shyiramo, kura muri stock, reba stock, hasigaye angahe, igiciro ni angahe, ideni, yishyuye, raporo y'umunsi, byangiritse.",
         subInv,
         'Ikiro kimwe, ibiro bibiri, bitatu, bine, bitanu, icumi, litiro imwe, ikarito, ipaki, icupa, agafuka, carton, sachet.',
         'Amafaranga magana atanu, igihumbi, ibihumbi bibiri, bitanu, icumi.',
@@ -415,27 +419,31 @@ REQUIREMENTS:
 
 4. Action Classification:
    Classify the command into EXACTLY ONE of these action codes:
-   - SELL: Spoken cues include gurisha, tanga, agize, ndagurishije, mfata, vend, sale. (e.g. "gurisha umuceri ibiro bibiri", "gurisha umuceri deux kilos")
-   - ADD_STOCK: Spoken cues include ongera, shyiramo, ndaranguye, injiza, byinjiye, stock, rajoute. (e.g. "ongera carton ebyiri za fanta", "shyiramo amavuta litiro eshanu")
-   - CHECK_STOCK: Spoken cues include reba stock, hasigaye angahe, ese dufite, ibisigaye, combien reste, check stock. (e.g. "reba stock y'isukari", "hasigaye fanta zingahe")
-   - CHECK_PRICE: Spoken cues include igiciro, ni angahe, bigura angahe, prix, c'est combien. (e.g. "igiciro cy'amavuta ni angahe", "umuceri ugura angahe")
-   - RECORD_DEBT: Spoken cues include ideni, andika ideni, yatwaye ku ideni, credit, dette. (e.g. "yatwaye isukari ku ideni", "andika ideni rya Jean ibihumbi bitanu")
-   - PAY_DEBT: Spoken cues include yishyuye ideni, yishyuye, ampaye, remboursé, pay debt. (e.g. "Kamanzi yishyuye ideni ibihumbi bibiri", "yishyuye amafaranga")
-   - RECORD_LOSS: Spoken cues include byangiritse, byamenetse, sohora amafaranga, cassé, perte, damaged. (e.g. "byangiritse amata litiro imwe", "icupa ryamenetse")
-   - DAILY_REPORT: Spoken cues include raporo y'umunsi, inyungu, twacuruje angahe, rapport, bilan. (e.g. "raporo y'umunsi", "twacuruje angahe uyu munsi")
-   - UNKNOWN: Spoken audio is unrelated, greeting, unintelligible, or intent cannot be determined.
+   - SELL: Spoken cues include gurisha, tanga, agize, ndagurishije, mfata, vend, sale, or direct item + quantity mentions (e.g. "gurisha umuceri ibiro bibiri", "gurisha umuceri deux kilos", "umuceri ibiro bibiri", "fanta ebyiri", or bulk notation like "1x2").
+   - ADD_STOCK: Spoken cues include ongera, ongeraho, ongeramo, shyiramo, shyiraho, ndaranguye, injiza, byinjiye, stock, mfite (e.g. "ongera carton ebyiri za fanta", "mfite umuceri 10", "shyiramo amavuta litiro eshanu").
+   - CREATE_PRODUCT: Spoken cues include kora igicuruzwa gishya, shyiraho igicuruzwa, ongeraho igicuruzwa, create product, new product (e.g. "kora igicuruzwa gishya ibirayi, kg, stock 10, kugura 500, kugurisha 700"). Extract item (name), unit, quantity (stock), buying_price, selling_price.
+   - UPDATE_PRICES: Spoken cues include hindura igiciro, hindura igiciro cyo kugurisha, hindura igiciro cyo kugura, update price, change price (e.g. "hindura igiciro cyo kugurisha ibirayi 800", "hindura igiciro cyo kugura umuceri 1500"). Extract item, buying_price, selling_price.
+   - CHECK_STOCK: Spoken cues include reba stock, reba ububiko, ububiko, stock, hasigaye angahe, ese dufite, hasigaye iki, check stock (e.g. "reba stock y'isukari", "hasigaye fanta zingahe", "reba ububiko", "stock"). If general stock check without a single product, set item to null.
+   - CHECK_PRICE: Spoken cues include igiciro, ni angahe, bigura angahe, prix, c'est combien (e.g. "igiciro cy'amavuta ni angahe", "umuceri ugura angahe").
+   - RECORD_DEBT: Spoken cues include ideni, andika ideni, yatwaye ku ideni, credit, dette (e.g. "yatwaye isukari ku ideni", "andika ideni rya Jean ibihumbi bitanu").
+   - PAY_DEBT: Spoken cues include yishyuye ideni, yishyuye, ampaye, remboursé, pay debt (e.g. "Kamanzi yishyuye ideni ibihumbi bibiri", "yishyuye amafaranga").
+   - RECORD_LOSS: Spoken cues include byangiritse, byamenetse, sohora amafaranga, cassé, perte, damaged (e.g. "byangiritse amata litiro imwe", "icupa ryamenetse").
+   - DAILY_REPORT: Spoken cues include raporo, report, raporo y'umunsi, inyungu, twacuruje angahe, rapport, bilan, uyu munsi twacuruje angahe (e.g. "raporo y'umunsi", "report", "raporo").
+   - UNKNOWN: Spoken audio is completely unrelated or intent cannot be determined.
 
 5. Strict Output JSON Schema:
 Return ONLY a valid JSON object matching this schema:
 {
   "raw_text": "${rawTranscript.replace(/"/g, '\\"')}",
   "corrected_text": "string",
-  "action": "SELL | ADD_STOCK | CHECK_STOCK | CHECK_PRICE | RECORD_DEBT | PAY_DEBT | RECORD_LOSS | DAILY_REPORT | UNKNOWN",
+  "action": "SELL | ADD_STOCK | CHECK_STOCK | CHECK_PRICE | CREATE_PRODUCT | UPDATE_PRICES | RECORD_DEBT | PAY_DEBT | RECORD_LOSS | DAILY_REPORT | UNKNOWN",
   "item": "string | null",
   "quantity": "number | null",
   "unit": "string | null",
   "amount_rwf": "number | null",
-  "customer_name": "string | null"
+  "customer_name": "string | null",
+  "buying_price": "number | null",
+  "selling_price": "number | null"
 }`;
 
     const normalizationResult = await requestChatNormalization(systemPrompt, {
@@ -516,8 +524,10 @@ Return ONLY a valid JSON object matching this schema:
         item: command.item,
         quantity: command.quantity,
         unit: command.unit,
-        amount_rwf: command.amount_rwf,
-        customer_name: command.customer_name,
+        amount_rwf: command.amount_rwf ?? null,
+        customer_name: command.customer_name ?? null,
+        buying_price: command.buying_price ?? null,
+        selling_price: command.selling_price ?? null,
       },
       { headers: corsHeaders }
     );
